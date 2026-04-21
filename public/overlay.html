@@ -123,13 +123,15 @@
 
   <script>
     // =============================================
-    // TwitchSoundBoard – OBS Overlay v4
+    // TwitchSoundBoard – OBS Overlay v5
     // Support: Lokale Dateien + YouTube/Spotify Embeds
+    // Queue-Management: Bidirektionales WebSocket
     // =============================================
 
     var queue = [];
     var isPlaying = false;
     var MAX_QUEUE = 10;
+    var currentItem = null; // aktuell abspielendes Item
 
     // YouTube Player State
     var ytApiReady = false;
@@ -229,7 +231,61 @@
     function handleMessage(data) {
       if (data.type === 'play') return enqueue(data);
       if (data.type === 'init' || data.type === 'config_reloaded') return dbg('Config OK');
+      if (data.type === 'queue_skip') return handleSkip();
+      if (data.type === 'queue_clear') return handleClear();
+      if (data.type === 'queue_stop') return handleStop();
     }
+
+    // =============================================
+    // Queue State Reporting (an Server)
+    // =============================================
+    function getItemLabel(item) {
+      if (!item) return '';
+      if (item.embedType) return '[' + item.embedType + '] ' + item.videoId;
+      return item.file || '';
+    }
+
+    function reportQueueState() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      try {
+        ws.send(JSON.stringify({
+          type: 'queue_state',
+          state: {
+            isPlaying: isPlaying,
+            current: currentItem ? { file: currentItem.file, mediaType: currentItem.mediaType, embedType: currentItem.embedType, videoId: currentItem.videoId, user: currentItem.user, label: getItemLabel(currentItem) } : null,
+            queue: queue.map(function(item) { return { file: item.file, mediaType: item.mediaType, embedType: item.embedType, videoId: item.videoId, user: item.user, label: getItemLabel(item) }; })
+          }
+        }));
+      } catch (e) {}
+    }
+
+    // =============================================
+    // Queue Control (vom Server)
+    // =============================================
+    function handleSkip() {
+      dbg('SKIP angefordert');
+      if (!isPlaying) { queue = []; reportQueueState(); return; }
+      // Aktuelles abbrechen und naechstes spielen
+      skipCurrent = true;
+      // Cleanup triggern
+      if (typeof currentCleanup === 'function') currentCleanup();
+    }
+
+    function handleClear() {
+      dbg('CLEAR angefordert');
+      queue = [];
+      // Aktuelles laeuft weiter, aber Queue ist leer
+      reportQueueState();
+    }
+
+    function handleStop() {
+      dbg('STOP angefordert (alles)');
+      queue = [];
+      if (typeof currentCleanup === 'function') currentCleanup();
+    }
+
+    var skipCurrent = false;
+    var currentCleanup = null;
 
     // =============================================
     // Queue
@@ -240,15 +296,19 @@
       queue.push(data);
       var label = data.embedType ? ('[' + data.embedType + '] ' + data.videoId) : data.file;
       dbg('+ "' + label + '" von ' + (data.user || '?') + ' [' + queue.length + ']');
+      reportQueueState();
       if (!isPlaying) processQueue();
     }
 
     function processQueue() {
-      if (!queue.length) { isPlaying = false; dbg('Queue leer'); return; }
+      if (!queue.length) { isPlaying = false; currentItem = null; dbg('Queue leer'); reportQueueState(); return; }
       isPlaying = true;
+      skipCurrent = false;
       var item = queue.shift();
+      currentItem = item;
       var label = item.embedType ? ('[' + item.embedType + '] ' + item.videoId) : item.file;
       dbg('> Spiele: "' + label + '" [Q: ' + queue.length + ']');
+      reportQueueState();
       try {
         if (item.embedType) {
           playEmbed(item);
@@ -266,6 +326,8 @@
     function finishCurrent() {
       if (!isPlaying) return;
       isPlaying = false;
+      currentItem = null;
+      reportQueueState();
       setTimeout(function() { processQueue(); }, 120);
     }
 
@@ -288,6 +350,7 @@
       var safeTimer = null;
 
       function cleanup() {
+        currentCleanup = cleanup;
         if (done) return;
         done = true;
         clearTimeout(durTimer);
@@ -396,6 +459,7 @@
       audio.volume = (item.volume != null ? item.volume : 0.8);
 
       function cleanup() {
+        currentCleanup = cleanup;
         if (done) return; done = true;
         clearTimeout(durTimer); clearTimeout(safeTimer);
         try { audio.pause(); } catch(e) {}
@@ -439,6 +503,7 @@
       var done = false, playStarted = false, durTimer = null, safeTimer = null;
 
       function cleanup() {
+        currentCleanup = cleanup;
         if (done) return; done = true;
         clearTimeout(durTimer); clearTimeout(safeTimer);
         videoPlayer.oncanplaythrough = null; videoPlayer.onloadeddata = null;

@@ -118,26 +118,38 @@ function getSpotifyTrackInfo(url) {
 // YouTube Suche via Piped API (fuer Spotify → YouTube)
 function searchYouTube(query) {
   return new Promise(function(resolve, reject) {
-    var instances = [
+    var pipedInstances = [
       'https://pipedapi.kavin.rocks',
       'https://pipedapi.r4fo.com',
       'https://pipedapi.adminforge.de',
-      'https://pipedapi-libre.kavin.rocks'
+      'https://pipedapi-libre.kavin.rocks',
+      'https://pipedapi.in.projectsegfau.lt',
+      'https://pipedapi.moomoo.me',
+      'https://watchapi.whatever.social'
     ];
 
-    function tryPiped(idx) {
-      if (idx >= instances.length) {
+    // Versuche Piped mit verschiedenen Filtern
+    var filters = ['music_songs', 'videos', ''];
+    var instanceIdx = 0;
+    var filterIdx = 0;
+
+    function tryPiped() {
+      if (instanceIdx >= pipedInstances.length) {
         // Fallback: Invidious Suche
         return searchYouTubeInvidious(query).then(resolve).catch(function() {
-          reject(new Error('YouTube-Suche fehlgeschlagen'));
+          reject(new Error('YouTube-Suche fehlgeschlagen (alle Instanzen unerreichbar)'));
         });
       }
 
-      var apiUrl = instances[idx] + '/search?q=' + encodeURIComponent(query) + '&filter=music_songs';
-      log('INFO', 'YT Suche Piped [' + (idx+1) + '/' + instances.length + ']: ' + instances[idx]);
+      var filter = filters[filterIdx] || '';
+      var qs = '?q=' + encodeURIComponent(query);
+      if (filter) qs += '&filter=' + filter;
 
-      https.get(apiUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.4.0' } }, function(resp) {
-        if (resp.statusCode !== 200) { resp.resume(); return tryPiped(idx + 1); }
+      var apiUrl = pipedInstances[instanceIdx] + '/search' + qs;
+      log('INFO', 'YT Suche Piped [' + (instanceIdx+1) + '/' + pipedInstances.length + '] filter=' + (filter || 'none') + ': ' + pipedInstances[instanceIdx]);
+
+      https.get(apiUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.4.1' } }, function(resp) {
+        if (resp.statusCode !== 200) { resp.resume(); nextInstance(); return; }
         var data = '';
         resp.on('data', function(chunk) { data += chunk; });
         resp.on('end', function() {
@@ -145,13 +157,13 @@ function searchYouTube(query) {
             var json = JSON.parse(data);
             var items = json.items || json;
             if (Array.isArray(items) && items.length > 0) {
-              // Suche erst nach "stream" (Video), dann "channel", etc.
               var video = null;
               for (var i = 0; i < items.length; i++) {
-                if (items[i].type === 'stream' || items[i].url) {
+                if (items[i].type === 'stream' || (items[i].url && items[i].url.indexOf('/watch') !== -1)) {
                   video = items[i]; break;
                 }
               }
+              if (!video && items[0] && items[0].url) video = items[0];
               if (video && video.url) {
                 var vid = video.url.match(/[?&]v=([a-zA-Z0-9_-]{6,})/);
                 if (vid) {
@@ -160,13 +172,19 @@ function searchYouTube(query) {
                 }
               }
             }
-            tryPiped(idx + 1);
-          } catch (e) { tryPiped(idx + 1); }
+            nextInstance();
+          } catch (e) { nextInstance(); }
         });
-      }).on('error', function() { tryPiped(idx + 1); }).setTimeout(8000, function() { tryPiped(idx + 1); });
+      }).on('error', function() { nextInstance(); }).setTimeout(8000, function() { nextInstance(); });
     }
 
-    tryPiped(0);
+    function nextInstance() {
+      filterIdx++;
+      if (filterIdx >= filters.length) { filterIdx = 0; instanceIdx++; }
+      tryPiped();
+    }
+
+    tryPiped();
   });
 }
 
@@ -176,16 +194,21 @@ function searchYouTubeInvidious(query) {
       'https://inv.nadeko.net',
       'https://invidious.fdn.fr',
       'https://vid.puffyan.us',
-      'https://yt.artemislena.eu',
       'https://yewtu.be',
-      'https://invidious.perennialte.ch'
+      'https://invidious.perennialte.ch',
+      'https://invidious.nerdvpn.de',
+      'https://invidious.jing.rocks',
+      'https://iv.ggtyler.dev',
+      'https://invidious.privacyredirect.com',
+      'https://invidious.protokolla.fi'
     ];
 
     function tryInst(idx) {
       if (idx >= instances.length) return reject(new Error('Invidious Suche fehlgeschlagen'));
 
       var apiUrl = instances[idx] + '/api/v1/search?q=' + encodeURIComponent(query) + '&type=video&sort_by=relevance';
-      https.get(apiUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.4.0' } }, function(resp) {
+      log('INFO', 'YT Suche Invidious [' + (idx+1) + '/' + instances.length + ']: ' + instances[idx]);
+      https.get(apiUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.4.1' } }, function(resp) {
         if (resp.statusCode !== 200) { resp.resume(); return tryInst(idx + 1); }
         var data = '';
         resp.on('data', function(chunk) { data += chunk; });
@@ -460,6 +483,51 @@ app.put('/api/credentials', function(req, res) {
 });
 
 // =============================================
+// Chat Link Handler (!ytlink, !spotifylink)
+// =============================================
+async function handleChatLink(url, type, user) {
+  try {
+    var result;
+    if (type === 'youtube' && isYtUrl(url)) {
+      var videoId = extractYtVideoId(url);
+      if (!videoId) { log('WARN', 'Chat Link: Ungueltige YT URL von ' + user); return; }
+      var linkId = 'yt_' + videoId;
+      // Pruefe ob bereits importiert
+      if ((config.links || {})[linkId]) {
+        var link = config.links[linkId];
+        result = { link_id: linkId, title: link.title, video_id: link.video_id, embed_type: link.link_type === 'yt_embed' ? 'yt_video' : 'yt_audio' };
+      } else {
+        result = await importYouTubeEmbed(url);
+      }
+      triggerOverlay(result.link_id, 'link', 'chat', user);
+      log('INFO', 'Chat !ytlink: "' + result.title + '" von ' + user);
+    } else if (type === 'spotify' && isSpotifyUrl(url)) {
+      // Pruefe ob bereits importiert (nach spotify_url suchen)
+      var existingId = null;
+      for (var k in (config.links || {})) {
+        if (((config.links[k].spotify_url || '') === url) || ((config.links[k].spotify_url || '') === url.split('?')[0])) {
+          existingId = k; break;
+        }
+      }
+      if (existingId) {
+        var existingLink = config.links[existingId];
+        result = { link_id: existingId, title: existingLink.title, video_id: existingLink.video_id, embed_type: 'yt_audio' };
+        triggerOverlay(result.link_id, 'link', 'chat', user);
+        log('INFO', 'Chat !spotifylink (cached): "' + result.title + '" von ' + user);
+      } else {
+        result = await importSpotifyEmbed(url);
+        triggerOverlay(result.link_id, 'link', 'chat', user);
+        log('INFO', 'Chat !spotifylink (neu): "' + result.title + '" von ' + user);
+      }
+    } else {
+      log('WARN', 'Chat Link: Ungueltige URL von ' + user + ': ' + url);
+    }
+  } catch (e) {
+    log('ERROR', 'Chat Link Fehler von ' + user + ': ' + e.message);
+  }
+}
+
+// =============================================
 // API – Twitch (tmi.js)
 // =============================================
 var chatClient = null, twitchRunning = false;
@@ -483,9 +551,29 @@ app.post('/api/twitch/start', function(req, res) {
       if (self) return;
       var prefix = (config.settings || {}).command_prefix || '!';
       if (message.indexOf(prefix) === 0) {
-        var cmd = message.toLowerCase().split(' ')[0];
+        var parts = message.split(' ');
+        var cmd = parts[0].toLowerCase();
+        var rest = parts.slice(1).join(' ').trim();
+        var user = userstate['display-name'] || 'Viewer';
+
+        // Configurierte Commands
         var mapping = config.chat_commands || {};
-        if (mapping[cmd]) { triggerOverlay(mapping[cmd].file, mapping[cmd].type, 'chat', userstate['display-name'] || 'Viewer'); }
+        if (mapping[cmd]) {
+          triggerOverlay(mapping[cmd].file, mapping[cmd].type, 'chat', user);
+          return;
+        }
+
+        // !ytlink <url> – YouTube Video direkt aus Chat abspielen
+        if (cmd === prefix + 'ytlink' && rest) {
+          handleChatLink(rest, 'youtube', user);
+          return;
+        }
+
+        // !spotifylink <url> – Spotify Track direkt aus Chat abspielen
+        if (cmd === prefix + 'spotifylink' && rest) {
+          handleChatLink(rest, 'spotify', user);
+          return;
+        }
       }
     });
     chatClient.on('error', function(err) { log('ERROR', 'Twitch: ' + (err.message || JSON.stringify(err))); });
@@ -513,6 +601,33 @@ app.get('/api/health', function(req, res) {
 });
 
 // =============================================
+// API – Queue Management
+// =============================================
+var overlayQueueState = { queue: [], current: null, isPlaying: false };
+
+app.get('/api/queue', function(req, res) {
+  res.json(overlayQueueState);
+});
+
+app.post('/api/queue/skip', function(req, res) {
+  broadcast({ type: 'queue_skip' });
+  log('INFO', 'Queue: Skip angefordert');
+  res.json({ ok: true });
+});
+
+app.post('/api/queue/clear', function(req, res) {
+  broadcast({ type: 'queue_clear' });
+  log('INFO', 'Queue: Clear angefordert');
+  res.json({ ok: true });
+});
+
+app.post('/api/queue/stop', function(req, res) {
+  broadcast({ type: 'queue_stop' });
+  log('INFO', 'Queue: Stop angefordert (aktuelles + Queue)');
+  res.json({ ok: true });
+});
+
+// =============================================
 // Pages
 // =============================================
 app.get('/admin', function(req, res) { res.sendFile(path.join(__dirname, 'public', 'admin.html')); });
@@ -537,6 +652,14 @@ if (wss) wss.on('connection', function(ws) {
   try { ws.send(JSON.stringify({ type: 'init', config: config })); } catch (e) {}
   ws.on('close', function() { overlayClients.delete(ws); });
   ws.on('error', function() {});
+  ws.on('message', function(raw) {
+    try {
+      var msg = JSON.parse(raw);
+      if (msg.type === 'queue_state') {
+        overlayQueueState = msg.state || { queue: [], current: null, isPlaying: false };
+      }
+    } catch (e) {}
+  });
 });
 
 function broadcast(data) { var msg = JSON.stringify(data); overlayClients.forEach(function(c) { if (c.readyState === WebSocket.OPEN) { try { c.send(msg); } catch (e) {} } }); }

@@ -119,6 +119,7 @@
     <div class="tab" data-t="sounds">Sounds & Videos</div>
     <div class="tab" data-t="commands">Chat-Commands</div>
     <div class="tab on" data-t="twitch">Twitch</div>
+    <div class="tab" data-t="queue">Queue</div>
     <div class="tab" data-t="settings">Einstellungen</div>
     <div class="tab" data-t="obs">OBS</div>
   </div>
@@ -227,6 +228,31 @@
       <h3>Verfuegbare Commands</h3>
       <ul class="clist" id="cL"></ul>
       <div class="empty" id="cE">Keine Commands.</div>
+    </div>
+  </div>
+
+  <!-- ====== QUEUE ====== -->
+  <div class="tc" id="t-queue">
+    <div class="card">
+      <h3>Warteschlange <span id="qCount" style="font-weight:400;color:var(--dm);font-size:12px"></span></h3>
+      <p style="font-size:12px;color:var(--dm);margin-bottom:14px">Live-Anzeige der aktuellen Overlay-Queue. Aktualisiert automatisch alle 2 Sekunden.</p>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button class="btn bs" onclick="queueSkip()">&#9654; Skip</button>
+        <button class="btn bd" onclick="queueClear()">&#128465; Queue leeren</button>
+        <button class="btn br" onclick="queueStop()">&#9632; Alles stoppen</button>
+      </div>
+      <div id="qCurrent" style="display:none">
+        <div style="font-size:12px;color:var(--dm);margin-bottom:8px">JETZT SPIELT:</div>
+        <div class="citem" style="border-color:var(--gn)">
+          <span style="color:var(--gn);font-weight:700;min-width:50px;text-align:center">&#9654;</span>
+          <span class="cn" id="qCurName">-</span>
+          <span class="cf" id="qCurLabel">-</span>
+          <span class="ct" id="qCurType">-</span>
+          <span class="ct" id="qCurUser">-</span>
+        </div>
+      </div>
+      <div id="qEmpty" class="empty">Queue ist leer.</div>
+      <ul class="clist" id="qList"></ul>
     </div>
   </div>
 
@@ -633,6 +659,49 @@ function esc(s){const d=document.createElement('div');d.textContent=s;return d.i
 function toast(m,t='inf'){const c=document.getElementById('toasts'),e=document.createElement('div');e.className='toast '+t;e.textContent=m;c.appendChild(e);setTimeout(()=>e.remove(),3500);}
 
 init();setInterval(()=>{loadSt();refreshTwitchStatus();},10000);
+setInterval(loadQueue,2000);
+
+// ---- Queue Management ----
+async function loadQueue(){
+  try{
+    const d=await(await fetch(A+'/api/queue')).json();
+    const qCur=document.getElementById('qCurrent');
+    const qList=document.getElementById('qList');
+    const qEmpty=document.getElementById('qEmpty');
+    const qCount=document.getElementById('qCount');
+    var total=(d.queue||[]).length+(d.isPlaying?1:0);
+    qCount.textContent=total?'('+total+')':'';
+
+    // Aktuell spielendes Item
+    if(d.isPlaying&&d.current){
+      qCur.style.display='block';
+      var c=d.current;
+      document.getElementById('qCurName').textContent='#1';
+      document.getElementById('qCurLabel').textContent=c.label||c.file||'-';
+      document.getElementById('qCurType').textContent=c.embedType==='yt_video'?'YT Video':c.embedType==='yt_audio'?'Spotify':c.mediaType==='video'?'Video':'Sound';
+      document.getElementById('qCurUser').textContent=c.user||'-';
+    }else{
+      qCur.style.display='none';
+    }
+
+    // Queue-Liste
+    var items=d.queue||[];
+    if(items.length===0){
+      qList.innerHTML='';
+      qEmpty.style.display=d.isPlaying?'none':'block';
+    }else{
+      qEmpty.style.display='none';
+      qList.innerHTML=items.map(function(item,i){
+        var type=item.embedType==='yt_video'?'YT Video':item.embedType==='yt_audio'?'Spotify':item.mediaType==='video'?'Video':'Sound';
+        return '<li class=\"citem\"><span class=\"cn\" style=\"color:var(--or);min-width:50px;text-align:center\">#'+(i+2)+'</span><span class=\"cf\">'+esc(item.label||item.file||'-')+'</span><span class=\"ct\">'+type+'</span><span class=\"ct\">'+esc(item.user||'-')+'</span></li>';
+      }).join('');
+    }
+  }catch(e){}
+}
+
+async function queueSkip(){try{await fetch(A+'/api/queue/skip',{method:'POST'});toast('Skip','ok');}catch(e){toast('Fehler','err');}}
+async function queueClear(){try{await fetch(A+'/api/queue/clear',{method:'POST'});toast('Queue geleert','inf');}catch(e){toast('Fehler','err');}}
+async function queueStop(){try{await fetch(A+'/api/queue/stop',{method:'POST'});toast('Alles gestoppt','inf');}catch(e){toast('Fehler','err');}}
 </script>
 </body>
 </html>
