@@ -1,5 +1,5 @@
 // =============================================
-// TwitchSoundBoard – Server v0.2.1
+// TwitchSoundBoard – Server v0.2.2
 // Lokal, kein HTTPS, kein Crash
 // =============================================
 
@@ -209,9 +209,9 @@ function searchYouTubeOnInvidious(query) {
   });
 }
 
-// ---- Invidious Download (Proxy fuer age-restricted Videos) ----
+// ---- Invidious Download (Proxy fuer age-restricted / format-lacking Videos) ----
 function downloadViaInvidious(videoId, filePath, type) {
-  // type: 'video' (mp4 combined) oder 'audio' (audio only)
+  // type: 'video' (combined mp4) oder 'audio' (audio only)
   return new Promise(function(resolve, reject) {
     var instances = [
       'https://inv.nadeko.net',
@@ -219,22 +219,25 @@ function downloadViaInvidious(videoId, filePath, type) {
       'https://invidious.fdn.fr',
       'https://yt.artemislena.eu',
       'https://invidious.nerdvpn.de',
-      'https://invidious.jing.rocks'
+      'https://invidious.jing.rocks',
+      'https://invidious.privacyredirect.com',
+      'https://invidious.protokolla.fi'
     ];
 
     function tryInstance(idx) {
       if (idx >= instances.length) {
-        return reject(new Error('Download ueber Invidious fehlgeschlagen – alle Instanzen unerreichbar'));
+        return reject(new Error('Download ueber Invidious fehlgeschlagen – alle ' + instances.length + ' Instanzen unerreichbar'));
       }
 
       var inst = instances[idx];
-      // Video-Info holen (formatStreams = combined, adaptiveFormats = separated)
-      var infoUrl = inst + '/api/v1/videos/' + videoId + '?fields=title,lengthSeconds,formatStreams,adaptiveFormats,videoThumbnails';
+      var infoUrl = inst + '/api/v1/videos/' + videoId + '?fields=title,lengthSeconds,formatStreams,adaptiveFormats';
+
+      log('INFO', 'Invidious [' + (idx+1) + '/' + instances.length + ']: ' + inst);
 
       require('https').get(infoUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.2.0' } }, function(resp) {
         if (resp.statusCode !== 200) {
           resp.resume();
-          log('WARN', 'Invidious Instanz ' + inst + ' nicht erreichbar (' + resp.statusCode + ')');
+          log('WARN', 'Invidious ' + inst + ' Status ' + resp.statusCode);
           return tryInstance(idx + 1);
         }
         var data = '';
@@ -242,80 +245,114 @@ function downloadViaInvidious(videoId, filePath, type) {
         resp.on('end', function() {
           try {
             var info = JSON.parse(data);
-
-            // Best format finden
+            var title = info.title || 'Unknown';
+            var durSec = parseInt(info.lengthSeconds) || 0;
             var dlUrl = null;
             var ext = 'mp4';
             var quality = '';
 
-            if (type === 'video' && Array.isArray(info.formatStreams) && info.formatStreams.length) {
-              // formatStreams = combined (video+audio, no ffmpeg)
-              // MP4 bevorzugen
-              var mp4s = info.formatStreams.filter(function(f) { return (f.type || '').indexOf('mp4') === 0; });
-              var pick = mp4s.length ? mp4s[0] : info.formatStreams[0];
-              dlUrl = (inst + pick.url).replace(/^https?:/, 'https:');
-              ext = (pick.type || 'video/mp4').split(';')[0].split('/')[1] || 'mp4';
-              quality = pick.qualityLabel || pick.quality || '';
-            } else if (Array.isArray(info.adaptiveFormats) && info.adaptiveFormats.length) {
-              // Audio only – bestes Audio
-              var audios = info.adaptiveFormats
-                .filter(function(f) { return f.type && f.type.indexOf('audio/') === 0; })
-                .sort(function(a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
-              if (audios.length) {
-                dlUrl = (inst + audios[0].url).replace(/^https?:/, 'https:');
-                ext = (audios[0].type || 'audio/mp4').split(';')[0].split('/')[1] || 'm4a';
-                quality = Math.round((audios[0].bitrate || 0) / 1000) + 'kbps';
+            if (type === 'video') {
+              // Strategie 1: formatStreams (combined video+audio)
+              if (Array.isArray(info.formatStreams) && info.formatStreams.length) {
+                var mp4s = info.formatStreams.filter(function(f) { return (f.type || '').indexOf('video/mp4') === 0; });
+                var pick = mp4s.length ? mp4s[0] : info.formatStreams[0];
+                dlUrl = pick.url;
+                ext = 'mp4';
+                quality = pick.qualityLabel || pick.quality || '';
+              }
+
+              // Strategie 2: /latest_version Proxy (itag 18 = 360p combined MP4, IMMER verfuegbar)
+              if (!dlUrl) {
+                dlUrl = inst + '/latest_version?id=' + videoId + '&itag=18&local=true';
+                ext = 'mp4';
+                quality = '360p (proxy)';
+              }
+            } else {
+              // Audio only – bestes Audio aus adaptiveFormats
+              if (Array.isArray(info.adaptiveFormats) && info.adaptiveFormats.length) {
+                var audios = info.adaptiveFormats
+                  .filter(function(f) { return f.type && f.type.indexOf('audio/') === 0; })
+                  .sort(function(a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
+                if (audios.length) {
+                  // audio proxy URL
+                  dlUrl = inst + '/latest_version?id=' + videoId + '&itag=' + audios[0].itag + '&local=true';
+                  ext = (audios[0].type || 'audio/mp4').split(';')[0].split('/')[1] || 'm4a';
+                  quality = Math.round((audios[0].bitrate || 0) / 1000) + 'kbps';
+                }
               }
             }
 
-            if (!dlUrl) return tryInstance(idx + 1);
+            if (!dlUrl) {
+              log('WARN', 'Invidious ' + inst + ': kein Format gefunden');
+              return tryInstance(idx + 1);
+            }
 
-            // Dateiendung an filePath anpassen
-            var finalPath = filePath;
+            // URL relativ -> absolut
+            if (dlUrl.indexOf('http') !== 0) dlUrl = inst + dlUrl;
+
             var baseName = filePath.replace(/\.[^.]+$/, '');
-            finalPath = baseName + '.' + ext;
+            var finalPath = baseName + '.' + ext;
 
-            log('INFO', 'Invidious Download via ' + inst + ' (' + quality + ', ' + ext + ')');
+            log('INFO', 'Invidious Download: ' + inst + ' (' + quality + ', ' + ext + ')');
 
             var file = fs.createWriteStream(finalPath);
-            require('https').get(dlUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.2.0' } }, function(dlResp) {
+            require('https').get(dlUrl, {
+              headers: { 'User-Agent': 'TwitchSoundBoard/0.2.0' }
+            }, function(dlResp) {
               if (dlResp.statusCode !== 200) {
                 file.close();
                 try { fs.unlinkSync(finalPath); } catch(e) {}
                 dlResp.resume();
-                log('WARN', 'Invidious Download fail (' + dlResp.statusCode + '): ' + inst);
+                log('WARN', 'Invidious DL fail (' + dlResp.statusCode + '): ' + inst);
                 return tryInstance(idx + 1);
               }
+
+              // Redirects folgen (301/302)
+              if (dlResp.statusCode >= 300 && dlResp.statusCode < 400 && dlResp.headers.location) {
+                file.close();
+                try { fs.unlinkSync(finalPath); } catch(e) {}
+                var redirUrl = dlResp.headers.location;
+                if (redirUrl.indexOf('http') !== 0) redirUrl = inst + redirUrl;
+
+                var file2 = fs.createWriteStream(finalPath);
+                require('https').get(redirUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.2.0' } }, function(redirResp) {
+                  if (redirResp.statusCode !== 200) {
+                    file2.close();
+                    try { fs.unlinkSync(finalPath); } catch(e) {}
+                    redirResp.resume();
+                    return tryInstance(idx + 1);
+                  }
+                  redirResp.pipe(file2);
+                  file2.on('finish', function() {
+                    file2.close();
+                    resolve({ filePath: finalPath, title: title, durationSeconds: durSec, quality: quality });
+                  });
+                  file2.on('error', function() { try { fs.unlinkSync(finalPath); } catch(e) {} tryInstance(idx + 1); });
+                  redirResp.on('error', function() { try { fs.unlinkSync(finalPath); } catch(e) {} tryInstance(idx + 1); });
+                }).on('error', function() { try { fs.unlinkSync(finalPath); } catch(e) {} tryInstance(idx + 1); })
+                  .setTimeout(180000, function() { try { fs.unlinkSync(finalPath); } catch(e) {} tryInstance(idx + 1); });
+                return;
+              }
+
               dlResp.pipe(file);
               file.on('finish', function() {
                 file.close();
-                resolve({
-                  filePath: finalPath,
-                  title: info.title || 'Unknown',
-                  durationSeconds: parseInt(info.lengthSeconds) || 0,
-                  quality: quality
-                });
+                resolve({ filePath: finalPath, title: title, durationSeconds: durSec, quality: quality });
               });
-              file.on('error', function(err) {
-                try { fs.unlinkSync(finalPath); } catch(e) {}
-                tryInstance(idx + 1);
-              });
-              dlResp.on('error', function() {
-                try { fs.unlinkSync(finalPath); } catch(e) {}
-                tryInstance(idx + 1);
-              });
+              file.on('error', function(err) { try { fs.unlinkSync(finalPath); } catch(e) {} tryInstance(idx + 1); });
+              dlResp.on('error', function() { try { fs.unlinkSync(finalPath); } catch(e) {} tryInstance(idx + 1); });
             }).on('error', function() {
               try { fs.unlinkSync(finalPath); } catch(e) {}
               tryInstance(idx + 1);
-            }).setTimeout(120000, function() {
+            }).setTimeout(180000, function() {
               try { fs.unlinkSync(finalPath); } catch(e) {}
-              log('WARN', 'Invidious Download timeout: ' + inst);
+              log('WARN', 'Invidious DL timeout: ' + inst);
               tryInstance(idx + 1);
             });
 
           } catch (e) { tryInstance(idx + 1); }
         });
-      }).on('error', function() { tryInstance(idx + 1); }).setTimeout(10000, function() { tryInstance(idx + 1); });
+      }).on('error', function() { tryInstance(idx + 1); }).setTimeout(15000, function() { tryInstance(idx + 1); });
     }
 
     tryInstance(0);
@@ -375,12 +412,9 @@ async function importYouTubeVideo(url) {
         return { filename: filename, title: title, type: 'video', duration_seconds: durationSec, size: fs.statSync(filePath).size, quality: format.qualityLabel || format.quality };
       }
     } catch (directErr) {
-      var errMsg = (directErr.message || '').toLowerCase();
-      if (errMsg.indexOf('sign in') !== -1 || errMsg.indexOf('age') !== -1 || errMsg.indexOf('login') !== -1 || errMsg.indexOf('unavailable') !== -1 || errMsg.indexOf('private') !== -1) {
-        log('WARN', 'YT Direkt fehlgeschlagen (' + directErr.message + '), versuche Invidious-Proxy...');
-      } else {
-        throw directErr;
-      }
+      // JEDEN ytdl-Fehler abfangen und Invidious versuchen
+      // (age-restricted, format error, login, unavailable, etc.)
+      log('WARN', 'YT Direkt fehlgeschlagen: ' + directErr.message + ' → versuche Invidious-Proxy...');
     }
   }
 
@@ -442,12 +476,8 @@ async function importSpotifyTrack(url) {
         return { filename: filename, title: trackInfo.title, type: 'sound', source: 'spotify', size: fs.statSync(filePath).size };
       }
     } catch (directErr) {
-      var errMsg = (directErr.message || '').toLowerCase();
-      if (errMsg.indexOf('sign in') !== -1 || errMsg.indexOf('age') !== -1 || errMsg.indexOf('login') !== -1) {
-        log('WARN', 'Spotify/YT Direkt fehlgeschlagen, versuche Invidious-Proxy...');
-      } else {
-        throw directErr;
-      }
+      // JEDEN ytdl-Fehler abfangen und Invidious versuchen
+      log('WARN', 'Spotify/YT Direkt fehlgeschlagen: ' + directErr.message + ' → versuche Invidious-Proxy...');
     }
   }
 

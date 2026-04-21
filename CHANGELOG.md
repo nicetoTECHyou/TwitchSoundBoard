@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2] – 2026-04-22
+
+### Fixed
+- **"Failed to find any playable formats" Error** – ytdl wirft diesen Fehler wenn keine combined formats gefunden werden. Der Code pruefte vorher nur auf "sign in/age/login" und warf alle anderen Fehler direkt weiter. Jetzt: JEDER ytdl-Fehler geht automatisch zum Invidious-Proxy-Fallback.
+- **Invidious formatStreams oft leer** – Viele Invidious-Instanzen liefern keine formatStreams mehr. Neue Strategie: Erst formatStreams pruefen, dann `/latest_version` Proxy-Endpoint (itag 18 = 360p combined MP4, IMMER verfuegbar auf YouTube).
+- **Redirect-Handling** – Invidious Proxy sendet oft 301/302 Redirects zu Google-CDN. Werden jetzt automatisch gefolgt.
+- **Mehr Invidious-Instanzen** – 8 Instanzen statt 6.
+- **Timeouts erhoht** – 180s Download-Timeout (fuer lange Videos), 15s Info-Timeout.
+
 ## [0.2.1] – 2026-04-22
 
 ### Fixed
