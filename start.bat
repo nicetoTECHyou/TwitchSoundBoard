@@ -20,20 +20,16 @@ if errorlevel 1 (
 if not exist "sounds" mkdir sounds
 if not exist "videos" mkdir videos
 
-if not exist "node_modules" (
-    echo [SETUP] Erste Installation - Dependencies werden installiert...
-    echo Das kann einen Moment dauern...
-    call npm install
-    if errorlevel 1 (
-        echo.
-        echo [FEHLER] npm install fehlgeschlagen!
-        echo.
-        pause
-        exit /b 1
-    )
-    echo [SETUP] Fertig!
+echo [SETUP] Dependencies installieren...
+call npm install
+if errorlevel 1 (
     echo.
+    echo [FEHLER] npm install fehlgeschlagen!
+    echo.
+    pause
+    exit /b 1
 )
+echo.
 
 echo [START]
 echo.
