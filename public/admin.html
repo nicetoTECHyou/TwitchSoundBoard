@@ -173,9 +173,9 @@
   <!-- ====== SOUNDS ====== -->
   <div class="tc" id="t-sounds">
     <div class="card">
-      <h3>YouTube / Spotify Import <span class="sub">Video oder Track per Link importieren</span></h3>
+      <h3>YouTube / Spotify Import <span class="sub">Per Link als Embed hinzufuegen (kein Download!)</span></h3>
       <p style="font-size:12px;color:var(--dm);margin-bottom:12px">
-        YouTube Link = <strong style="color:var(--tx)">Video (MP4)</strong> &bull; Spotify Track Link = <strong style="color:var(--tx)">Audio (MP3)</strong>
+        YouTube Link = <strong style="color:var(--tx)">Video Embed (sichtbar)</strong> &bull; Spotify Track = <strong style="color:var(--tx)">Audio Embed (versteckt, sucht automatisch YouTube)</strong>
       </p>
       <div class="fr">
         <div class="fg">
@@ -205,6 +205,11 @@
       <h3>Videos <span id="vC" style="font-weight:400;color:var(--dm);font-size:12px"></span></h3>
       <div class="grid" id="vG"></div>
       <div class="empty" id="vE">Noch keine Videos.</div>
+    </div>
+    <div class="card">
+      <h3>Embed Links <span id="lC" style="font-weight:400;color:var(--dm);font-size:12px"></span></h3>
+      <div class="grid" id="lG"></div>
+      <div class="empty" id="lE">Noch keine Embed Links.</div>
     </div>
   </div>
 
@@ -262,7 +267,7 @@
 <div class="toast-wrap" id="toasts"></div>
 <audio id="prev" style="display:none"></audio>
 
-<!-- Edit Modal -->
+<!-- Edit Modal (Datei) -->
 <div class="modal-bg hidden" id="editModal">
   <div class="modal">
     <h3>Datei bearbeiten</h3>
@@ -289,9 +294,33 @@
   </div>
 </div>
 
+<!-- Edit Modal (Link) -->
+<div class="modal-bg hidden" id="linkEditModal">
+  <div class="modal">
+    <h3>Embed Link bearbeiten</h3>
+    <div class="fr">
+      <div class="fg"><label>Link ID</label><input type="text" id="lmId" readonly style="opacity:.6"></div>
+    </div>
+    <div class="fr">
+      <div class="fg"><label>Anzeigename</label><input type="text" id="lmDisp" placeholder="Titel des Tracks / Videos"></div>
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label>Max. Spieldauer (ms)</label>
+        <input type="number" id="lmDur" placeholder="Leer = Standard (Video: 5s, Audio: ganz)" min="0" max="600000" step="100">
+        <div class="dur-info">Leer = Standard. <em>0</em> = ganzes Video. Fuer Audio: komplett abspielen.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn bp" onclick="saveLinkSettings()">Speichern</button>
+      <button class="btn bs" onclick="closeLinkEditModal()">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const A='';
-let sounds=[],videos=[],allFiles=[],config={chat_commands:{},settings:{}};
+let sounds=[],videos=[],links=[],allFiles=[],config={chat_commands:{},settings:{}};
 
 document.querySelectorAll('.tab').forEach(t=>{
   t.onclick=()=>{
@@ -380,25 +409,56 @@ async function refreshTwitchStatus(){
 // ---- Media ----
 async function loadMedia(){
   try{
-    const[s,v]=await Promise.all([fetch(A+'/api/sounds'),fetch(A+'/api/videos')]);
-    sounds=await s.json();videos=await v.json();
-    allFiles=[...sounds.map(f=>({...f,type:'sound'})),...videos.map(f=>({...f,type:'video'}))];
+    const[s,v,l]=await Promise.all([fetch(A+'/api/sounds'),fetch(A+'/api/videos'),fetch(A+'/api/links')]);
+    sounds=await s.json();videos=await v.json();links=await l.json();
+    // Links: yt_embed -> Videos, spotify_embed -> Sounds
+    allFiles=[
+      ...sounds.map(f=>({...f,type:'sound'})),
+      ...links.filter(l=>l.link_type==='spotify_embed').map(l=>({name:l.link_id,type:'link',display_name:l.title,path:'link:'+l.link_id,link_type:l.link_type,video_id:l.video_id,duration_ms:l.duration_ms})),
+      ...videos.map(f=>({...f,type:'video'})),
+      ...links.filter(l=>l.link_type==='yt_embed').map(l=>({name:l.link_id,type:'link',display_name:l.title,path:'link:'+l.link_id,link_type:l.link_type,video_id:l.video_id,duration_ms:l.duration_ms}))
+    ];
     renderFiles();updateSelects();
   }catch(e){toast('Fehler beim Laden','err');}
 }
 
 function renderFiles(){
-  document.getElementById('sG').innerHTML=sounds.map(f=>fc(f,'sound')).join('');
-  document.getElementById('vG').innerHTML=videos.map(f=>fc(f,'video')).join('');
-  document.getElementById('sC').textContent=sounds.length?`(${sounds.length})`:'';
-  document.getElementById('vC').textContent=videos.length?`(${videos.length})`:'';
-  document.getElementById('sE').style.display=sounds.length?'none':'block';
-  document.getElementById('vE').style.display=videos.length?'none':'block';
+  // Sounds: lokale + Spotify Embeds
+  var sCards=sounds.map(f=>fc(f,'sound')).join('');
+  var spCards=links.filter(l=>l.link_type==='spotify_embed').map(l=>lc(l,'sound')).join('');
+  document.getElementById('sG').innerHTML=sCards+spCards;
+  var sTotal=sounds.length+links.filter(l=>l.link_type==='spotify_embed').length;
+  document.getElementById('sC').textContent=sTotal?`(${sTotal})`:'';
+  document.getElementById('sE').style.display=sTotal?'none':'block';
+
+  // Videos: lokale + YT Embeds
+  var vCards=videos.map(f=>fc(f,'video')).join('');
+  var ytCards=links.filter(l=>l.link_type==='yt_embed').map(l=>lc(l,'video')).join('');
+  document.getElementById('vG').innerHTML=vCards+ytCards;
+  var vTotal=videos.length+links.filter(l=>l.link_type==='yt_embed').length;
+  document.getElementById('vC').textContent=vTotal?`(${vTotal})`:'';
+  document.getElementById('vE').style.display=vTotal?'none':'block';
+
+  // Embed Links Uebersicht
+  document.getElementById('lG').innerHTML=links.map(l=>lc(l,l.link_type==='yt_embed'?'video':'sound')).join('');
+  document.getElementById('lC').textContent=links.length?`(${links.length})`:'';
+  document.getElementById('lE').style.display=links.length?'none':'block';
+}
+
+// Link Card (Embed Links)
+function lc(l,section){
+  var isYt=l.link_type==='yt_embed';
+  var icon=isYt?'&#9654;':'&#127925;';
+  var badge=isYt?'<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;background:#ff0000;color:#fff;margin-top:6px;font-weight:600">YouTube</span>':'<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;background:#1db954;color:#fff;margin-top:6px;font-weight:600">Spotify</span>';
+  var durBadge=l.duration_ms?'<span class="dur-badge">'+(l.duration_ms>=1000?(l.duration_ms/1000)+'s':l.duration_ms+'ms')+'</span>':'';
+  var cmds=findCmds(l.link_id);
+  var tags=cmds.map(c=>'<span class="tag">'+esc(c)+'</span>').join('');
+  return '<div class="fcard"><div class="fn" title="'+esc(l.link_id)+'">'+icon+' '+esc(l.title)+'</div><div class="fm">Embed'+badge+'</div>'+tags+durBadge+'<div class="acts"><button class="btn bg sm" onclick="testTrigger(\''+l.link_id+'\',\'link\')">&#128268; Trigger</button><button class="btn bp sm bi" onclick="openEditLinkModal(\''+l.link_id+'\')" title="Bearbeiten">&#9998;</button><button class="btn bd sm bi" onclick="delLink(\''+l.link_id+'\')" title="Loeschen">&#10005;</button></div></div>';
 }
 
 function fc(f,type){
-  const sz=(f.size/1024).toFixed(0)+' KB';
-  const disp=f.display_name||null;
+  var sz=(f.size/1024).toFixed(0)+' KB';
+  var disp=f.display_name||null;
   const dur=f.duration_ms;
   const cmds=findCmds(f.name);
   const tags=cmds.map(c=>'<span class="tag">'+esc(c)+'</span>').join('');
@@ -430,8 +490,31 @@ async function saveFileSettings(){
 }
 
 document.getElementById('editModal').addEventListener('click',function(e){if(e.target===this)closeEditModal();});
+document.getElementById('linkEditModal').addEventListener('click',function(e){if(e.target===this)closeLinkEditModal();});
 
 function findCmds(fn){const r=[];for(const[k,v]of Object.entries(config.chat_commands||{}))if(v.file===fn)r.push(k);return r;}
+
+// Link Edit Modal
+var editLinkId=null;
+function openEditLinkModal(linkId){
+  editLinkId=linkId;
+  var link=(config.links||{})[linkId];
+  if(!link)return;
+  document.getElementById('lmId').value=linkId;
+  document.getElementById('lmDisp').value=link.title||'';
+  document.getElementById('lmDur').value=(link.duration_ms!=null)?link.duration_ms:'';
+  document.getElementById('linkEditModal').classList.remove('hidden');
+}
+function closeLinkEditModal(){document.getElementById('linkEditModal').classList.add('hidden');editLinkId=null;}
+async function saveLinkSettings(){
+  if(!editLinkId)return;
+  try{
+    var r=await fetch(A+'/api/links/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({link_id:editLinkId,duration_ms:document.getElementById('lmDur').value||null,display_name:document.getElementById('lmDisp').value.trim()||null})});
+    var d=await r.json();
+    if(r.ok){toast('Gespeichert','ok');closeLinkEditModal();await loadMedia();await loadCfg();}
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Fehler','err');}
+}
 
 const upZone=document.getElementById('upZone'),fIn=document.getElementById('fIn');
 upZone.onclick=()=>fIn.click();
@@ -447,6 +530,8 @@ async function uploadF(files){
 
 async function delFile(t,n){if(!confirm('Loeschen?'))return;await fetch(`${A}/api/media/${t}/${encodeURIComponent(n)}`,{method:'DELETE'});toast('Geloescht','ok');await loadMedia();await loadCfg();}
 
+async function delLink(linkId){if(!confirm('Embed Link loeschen?'))return;await fetch(`${A}/api/links/${encodeURIComponent(linkId)}`,{method:'DELETE'});toast('Link geloescht','ok');await loadMedia();await loadCfg();}
+
 function preview(p,t){const a=document.getElementById('prev');if(t==='sound'){a.src=p;a.play().catch(()=>{});}}
 
 async function testTrigger(file,type){
@@ -460,15 +545,14 @@ async function importFromUrl(){
   var st=document.getElementById('importStatus');
   btn.disabled=true;btn.textContent='Importiere...';
   st.style.display='block';
-  st.innerHTML='<span style="color:var(--dm)">&#8987; Download laeuft (bei age-restricted Videos wird automatisch Invidious-Proxy genutzt)...</span>';
+  st.innerHTML='<span style=\"color:var(--dm)\">&#8987; Importiere Embed Link...</span>';
   try{
     var r=await fetch(A+'/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})});
     var d=await r.json();
     if(r.ok){
       var imp=d.import;
-      var lbl=imp.type==='video'?'Video (MP4)':'Audio';
-      var sz=imp.size?Math.round(imp.size/1024)+' KB':'';
-      st.innerHTML='<span style="color:var(--gn)">&#10003; '+esc(imp.title)+'</span> als '+lbl+' importiert'+(sz?' ('+sz+')':'');
+      var lbl=imp.embed_type==='yt_video'?'YouTube Video Embed':'Spotify Audio Embed';
+      st.innerHTML='<span style=\"color:var(--gn)\">&#10003; '+esc(imp.title)+'</span> als '+lbl+' hinzugefuegt';
       toast('"'+imp.title+'" importiert!','ok');
       document.getElementById('importUrl').value='';
       await loadMedia();await loadCfg();
@@ -490,14 +574,22 @@ async function loadCfg(){try{config=await(await fetch(A+'/api/config')).json();r
 function renderCmds(){
   const cmds=config.chat_commands||{},keys=Object.keys(cmds);
   document.getElementById('cE').style.display=keys.length?'none':'block';
-  document.getElementById('cL').innerHTML=keys.map(k=>`<li class="citem"><span class="cn">${esc(k)}</span><span class="cf">${esc(cmds[k].file)}</span><span class="ct">${cmds[k].type==='video'?'Video':'Sound'}</span><button class="btn bd sm bi" onclick="delCmd('${esc(k)}')" title="Loeschen">&#10005;</button></li>`).join('');
+  document.getElementById('cL').innerHTML=keys.map(k=>{var t=cmds[k].type==='video'?'Video':cmds[k].type==='link'?'Link':'Sound';return `<li class="citem"><span class="cn">${esc(k)}</span><span class="cf">${esc(cmds[k].file)}</span><span class="ct">${t}</span><button class="btn bd sm bi" onclick="delCmd('${esc(k)}')" title="Loeschen">&#10005;</button></li>`;}).join('');
 }
 
 async function addCmd(){
-  const name=document.getElementById('cN').value.trim(),file=document.getElementById('cF').value;
-  if(!name||!file)return toast('Command und Datei!','err');
-  const fi=allFiles.find(f=>f.path===file);
-  try{const r=await fetch(A+'/api/config/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:name,file:fi?fi.name:file,type:fi?fi.type:'sound'})});if(r.ok){toast(`"${name}" hinzugefuegt`,'ok');document.getElementById('cN').value='';await loadCfg();}else{const d=await r.json();toast(d.error,'err');}}catch(e){toast('Fehler','err');}
+  const name=document.getElementById('cN').value.trim(),fileVal=document.getElementById('cF').value;
+  if(!name||!fileVal)return toast('Command und Datei!','err');
+  let cmdFile,cmdType;
+  if(fileVal.startsWith('link:')){
+    cmdFile=fileVal.substring(5);
+    cmdType='link';
+  }else{
+    const fi=allFiles.find(f=>f.path===fileVal);
+    cmdFile=fi?fi.name:fileVal;
+    cmdType=fi?fi.type:'sound';
+  }
+  try{const r=await fetch(A+'/api/config/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:name,file:cmdFile,type:cmdType})});if(r.ok){toast(`"${name}" hinzugefuegt`,'ok');document.getElementById('cN').value='';await loadCfg();}else{const d=await r.json();toast(d.error,'err');}}catch(e){toast('Fehler','err');}
 }
 
 async function delCmd(c){await fetch(`${A}/api/config/commands/${encodeURIComponent(c)}`,{method:'DELETE'});toast('Geloescht','ok');await loadCfg();}
@@ -532,7 +624,7 @@ async function loadSt(){
     document.getElementById('stGen').innerHTML=`
       <div class="sr"><span class="dot ${d.twitch.running?'on':''}"></span> Twitch Chat: ${d.twitch.running?'Verbunden (#'+d.twitch.channel+')':'Getrennt'}</div>
       <div class="sr"><span class="dot on"></span> Server: Online (${Math.round(d.uptime/60)}min)</div>
-      <div class="sr" style="color:var(--dm);margin-top:4px">${d.sounds} Sounds, ${d.videos} Videos, ${d.overlayClients} Overlay</div>`;
+      <div class="sr" style="color:var(--dm);margin-top:4px">${d.sounds} Sounds, ${d.videos} Videos, ${d.links} Links, ${d.overlayClients} Overlay</div>`;
     await refreshTwitchStatus();
   }catch(e){}
 }

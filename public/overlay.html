@@ -18,6 +18,7 @@
       pointer-events: none;
     }
 
+    /* Video-Container fuer lokale MP4 Dateien */
     #video-container {
       position: absolute;
       top: 50%; left: 50%;
@@ -30,7 +31,20 @@
       border-radius: 12px;
     }
 
-    /* Kleiner Audio-Status Indikator – nicht blockierend */
+    /* YouTube Embed Container (sichtbar fuer YT Videos) */
+    #yt-embed-visible {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      display: none;
+      z-index: 10;
+    }
+    #yt-embed-visible iframe {
+      width: 100%; height: 100%;
+      border: none;
+    }
+
+    /* Audio-Status Indikator */
     #audio-indicator {
       display: none;
       position: fixed;
@@ -90,40 +104,39 @@
     <div id="video-container">
       <video id="video-player" playsinline></video>
     </div>
+    <div id="yt-embed-visible"></div>
   </div>
 
   <div id="audio-indicator"></div>
   <div id="debug-bar"></div>
   <div id="ws-status" class="err">&#11044; Waiting...</div>
 
+  <!-- YouTube IFrame API laden -->
+  <script src="https://www.youtube.com/iframe_api"></script>
+
   <script>
     // =============================================
-    // TwitchSoundBoard – OBS Overlay v3
-    // Robuste Queue, Safety-Timeouts, kein
-    // blockierender Audio-Unlock Screen
+    // TwitchSoundBoard – OBS Overlay v4
+    // Support: Lokale Dateien + YouTube/Spotify Embeds
     // =============================================
 
     var queue = [];
     var isPlaying = false;
     var MAX_QUEUE = 10;
-    // Safety-Timeout: dynamisch berechnet
-    // - Wenn durationOverride > 0: override + 15s Puffer
-    // - Wenn 0/null (ganzes Video): 10 Minuten Max
-    // - Sounds (kein override): 120s
-    function calcSafetyTimeout(item) {
-      if (item.mediaType === 'video') {
-        var dur = item.durationOverride;
-        if (dur && dur > 0) return dur + 15000;
-        return 600000; // 10 Min fuer Videos ohne Limit
-      }
-      var sd = item.durationOverride;
-      if (sd && sd > 0) return sd + 10000;
-      return 120000; // 2 Min fuer Sounds ohne Limit
-    }
-    var audioUnlocked = false;
 
+    // YouTube Player State
+    var ytApiReady = false;
+    var currentYTPlayer = null;
+    var ytHiddenContainer = null; // fuer Spotify (versteckter YT Player)
+
+    // Audio unlock
+    var audioUnlocked = false;
+    var SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+    // DOM
     var videoContainer = document.getElementById('video-container');
     var videoPlayer = document.getElementById('video-player');
+    var ytEmbedVisible = document.getElementById('yt-embed-visible');
     var debugBar = document.getElementById('debug-bar');
     var wsStatus = document.getElementById('ws-status');
     var audioIndicator = document.getElementById('audio-indicator');
@@ -132,23 +145,26 @@
     if (debug) { debugBar.style.display = 'block'; wsStatus.style.display = 'block'; }
 
     // =============================================
-    // Audio Unlock – kein blockierendes Overlay
+    // YouTube IFrame API Ready Callback
     // =============================================
-    // Stiller WAV-Clip (44 Bytes) um Autoplay-Berechtigung zu testen
-    var SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+    window.onYouTubeIframeAPIReady = function() {
+      ytApiReady = true;
+      dbg('YouTube IFrame API bereit');
+    };
+
+    // =============================================
+    // Audio Unlock
+    // =============================================
+    var isOBS = /obs|streamlabs|electron/i.test(navigator.userAgent);
 
     function tryAutoplayUnlock() {
       var a = new Audio(SILENT_WAV);
       a.volume = 0;
       a.play().then(function() {
-        audioUnlocked = true;
-        a.pause();
-        a.src = '';
-        updateAudioIndicator();
-        dbg('Autoplay OK');
+        audioUnlocked = true; a.pause(); a.src = '';
+        updateAudioIndicator(); dbg('Autoplay OK');
       }).catch(function() {
-        a.src = '';
-        updateAudioIndicator();
+        a.src = ''; updateAudioIndicator();
         dbg('Autoplay blockiert – Klick auf Overlay freischaltet');
       });
     }
@@ -158,81 +174,40 @@
       var a = new Audio(SILENT_WAV);
       a.volume = 0;
       a.play().then(function() {
-        audioUnlocked = true;
-        a.pause();
-        a.src = '';
-        updateAudioIndicator();
-        dbg('Audio freigeschaltet');
+        audioUnlocked = true; a.pause(); a.src = '';
+        updateAudioIndicator(); dbg('Audio freigeschaltet');
       }).catch(function() { a.src = ''; });
     }
 
     function updateAudioIndicator() {
-      if (debug) {
-        audioIndicator.style.display = 'block';
-        if (audioUnlocked) {
-          audioIndicator.className = 'ok';
-          audioIndicator.textContent = '\u266B Audio OK';
-        } else {
-          audioIndicator.className = '';
-          audioIndicator.textContent = '\u266B Audio blockiert';
-        }
-      }
+      if (!debug) return;
+      audioIndicator.style.display = 'block';
+      if (audioUnlocked) { audioIndicator.className = 'ok'; audioIndicator.textContent = '\u266B Audio OK'; }
+      else { audioIndicator.className = ''; audioIndicator.textContent = '\u266B Audio blockiert'; }
     }
 
-    // OBS / Streamlabs: CEF erlaubt Autoplay immer
-    var isOBS = /obs|streamlabs|electron/i.test(navigator.userAgent);
+    if (isOBS) { audioUnlocked = true; updateAudioIndicator(); dbg('OBS – Autoplay aktiv'); }
+    else { tryAutoplayUnlock(); }
 
-    if (isOBS) {
-      audioUnlocked = true;
-      updateAudioIndicator();
-      dbg('OBS erkannt – Autoplay aktiv');
-    } else {
-      tryAutoplayUnlock();
-    }
-
-    // Beliebiger Klick/Touch auf der Seite schaltet Audio frei
     ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(function(evt) {
       document.addEventListener(evt, function() {
         unlockAudio();
-        // Sofort verarbeitete Queue abarbeiten falls was wartet
-        if (queue.length > 0 && !isPlaying) {
-          processQueue();
-        }
+        if (queue.length > 0 && !isPlaying) processQueue();
       });
     });
 
     // =============================================
-    // WebSocket – Auto-Reconnect
+    // WebSocket
     // =============================================
-    function wsUrl() {
-      var port = parseInt(location.port) || 3000;
-      return 'ws://' + location.hostname + ':' + (port + 1);
-    }
-
+    function wsUrl() { var p = parseInt(location.port) || 3000; return 'ws://' + location.hostname + ':' + (p + 1); }
     var ws, reconnects = 0;
 
     function connect() {
       dbg('Verbinde: ' + wsUrl());
       ws = new WebSocket(wsUrl());
-
-      ws.onopen = function() {
-        reconnects = 0;
-        wsStatus.className = 'ok';
-        wsStatus.textContent = '\u25CF Connected';
-        dbg('Verbunden');
-      };
-
-      ws.onmessage = function(e) {
-        try { handleMessage(JSON.parse(e.data)); }
-        catch (err) { dbg('Parse-Fehler: ' + err.message); }
-      };
-
-      ws.onclose = function() {
-        wsStatus.className = 'err';
-        wsStatus.textContent = '\u25CF Disconnected';
-        reconnect();
-      };
-
+      ws.onopen = function() { reconnects = 0; wsStatus.className = 'ok'; wsStatus.textContent = '\u25CF Connected'; dbg('Verbunden'); };
+      ws.onmessage = function(e) { try { handleMessage(JSON.parse(e.data)); } catch (err) { dbg('Parse-Fehler: ' + err.message); } };
+      ws.onclose = function() { wsStatus.className = 'err'; wsStatus.textContent = '\u25CF Disconnected'; reconnect(); };
       ws.onerror = function() { ws.close(); };
     }
 
@@ -250,30 +225,27 @@
     }
 
     // =============================================
-    // Queue – robust und einfach
+    // Queue
     // =============================================
     function enqueue(data) {
       var max = data.maxQueue || MAX_QUEUE;
-      if (queue.length >= max) {
-        dbg('Queue voll (' + max + '), drop: ' + data.file);
-        return;
-      }
+      if (queue.length >= max) { dbg('Queue voll (' + max + '), drop'); return; }
       queue.push(data);
-      dbg('+ "' + data.file + '" von ' + (data.user || '?') + ' [' + queue.length + ']');
+      var label = data.embedType ? ('[' + data.embedType + '] ' + data.videoId) : data.file;
+      dbg('+ "' + label + '" von ' + (data.user || '?') + ' [' + queue.length + ']');
       if (!isPlaying) processQueue();
     }
 
     function processQueue() {
-      if (!queue.length) {
-        isPlaying = false;
-        dbg('Queue leer');
-        return;
-      }
+      if (!queue.length) { isPlaying = false; dbg('Queue leer'); return; }
       isPlaying = true;
       var item = queue.shift();
-      dbg('> Spiele: "' + item.file + '" (' + (item.mediaType || 'sound') + ') [Q: ' + queue.length + ']');
+      var label = item.embedType ? ('[' + item.embedType + '] ' + item.videoId) : item.file;
+      dbg('> Spiele: "' + label + '" [Q: ' + queue.length + ']');
       try {
-        if (item.mediaType === 'video') {
+        if (item.embedType) {
+          playEmbed(item);
+        } else if (item.mediaType === 'video') {
           playVideo(item);
         } else {
           playSound(item);
@@ -284,7 +256,6 @@
       }
     }
 
-    // Wird NUR aus cleanup-Funktionen aufgerufen, niemals direkt
     function finishCurrent() {
       if (!isPlaying) return;
       isPlaying = false;
@@ -292,164 +263,199 @@
     }
 
     // =============================================
-    // Sound Player
+    // YouTube Embed Player
     // =============================================
-    function playSound(item) {
+    function playEmbed(item) {
+      // Warten bis YouTube API bereit
+      if (!ytApiReady) {
+        dbg('YouTube API nicht bereit, warte...');
+        queue.unshift(item);
+        isPlaying = false;
+        setTimeout(processQueue, 500);
+        return;
+      }
+
+      var isHidden = (item.embedType === 'yt_audio'); // Spotify = versteckt
       var done = false;
-      var playStarted = false;
       var durTimer = null;
       var safeTimer = null;
 
+      function cleanup() {
+        if (done) return;
+        done = true;
+        clearTimeout(durTimer);
+        clearTimeout(safeTimer);
+
+        // YT Player zerstoeren
+        if (currentYTPlayer) {
+          try { currentYTPlayer.destroy(); } catch(e) {}
+          currentYTPlayer = null;
+        }
+
+        // Container verstecken
+        ytEmbedVisible.style.display = 'none';
+        ytEmbedVisible.innerHTML = '';
+
+        // Versteckten Container entfernen
+        if (ytHiddenContainer) {
+          ytHiddenContainer.remove();
+          ytHiddenContainer = null;
+        }
+
+        dbg('Embed done: ' + item.videoId);
+        finishCurrent();
+      }
+
+      // Safety-Timeout
+      var dur = item.durationOverride;
+      var safetyMs;
+      if (dur && dur > 0) {
+        safetyMs = dur + 15000;
+      } else if (isHidden) {
+        safetyMs = 300000; // 5 Min fuer Audio
+      } else {
+        safetyMs = 600000; // 10 Min fuer Video
+      }
+
+      safeTimer = setTimeout(function() {
+        dbg('Embed safety timeout: ' + item.videoId);
+        cleanup();
+      }, safetyMs);
+
+      // Duration Override Timer (wenn gesetzt)
+      if (dur && dur > 0) {
+        durTimer = setTimeout(function() {
+          dbg('Embed cut@' + dur + 'ms: ' + item.videoId);
+          cleanup();
+        }, dur);
+      }
+
+      if (isHidden) {
+        // Spotify: Versteckter YouTube Player (Audio only)
+        ytHiddenContainer = document.createElement('div');
+        ytHiddenContainer.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;pointer-events:none;';
+        ytHiddenContainer.id = 'yt-hidden-' + Date.now();
+        document.body.appendChild(ytHiddenContainer);
+
+        currentYTPlayer = new YT.Player(ytHiddenContainer.id, {
+          videoId: item.videoId,
+          width: 1, height: 1,
+          playerVars: { autoplay: 1, controls: 0 },
+          events: {
+            onReady: function(e) { e.target.setVolume(Math.round((item.volume != null ? item.volume : 0.8) * 100)); e.target.playVideo(); dbg('Spotify Embed spielt (versteckt): ' + item.videoId); },
+            onStateChange: function(e) { if (e.data === YT.PlayerState.ENDED) { dbg('Embed ended: ' + item.videoId); cleanup(); } },
+            onError: function(e) { dbg('Embed Error ' + e.data + ': ' + item.videoId); cleanup(); }
+          }
+        });
+
+      } else {
+        // YouTube: Sichtbares Video Embed
+        ytEmbedVisible.style.display = 'block';
+        ytEmbedVisible.innerHTML = '';
+
+        var playerDiv = document.createElement('div');
+        playerDiv.id = 'yt-visible-' + Date.now();
+        playerDiv.style.cssText = 'width:100%;height:100%;';
+        ytEmbedVisible.appendChild(playerDiv);
+
+        currentYTPlayer = new YT.Player(playerDiv.id, {
+          videoId: item.videoId,
+          width: '100%', height: '100%',
+          playerVars: {
+            autoplay: 1,
+            controls: 0,
+            modestbranding: 1,
+            rel: 0,
+            showinfo: 0,
+            iv_load_policy: 3,
+            fs: 0,
+            disablekb: 1
+          },
+          events: {
+            onReady: function(e) { e.target.setVolume(Math.round((item.volume != null ? item.volume : 0.5) * 100)); e.target.playVideo(); dbg('YT Embed spielt: ' + item.videoId); },
+            onStateChange: function(e) { if (e.data === YT.PlayerState.ENDED) { dbg('YT Embed ended: ' + item.videoId); cleanup(); } },
+            onError: function(e) { dbg('YT Embed Error ' + e.data + ': ' + item.videoId); cleanup(); }
+          }
+        });
+      }
+    }
+
+    // =============================================
+    // Sound Player (lokale Dateien)
+    // =============================================
+    function playSound(item) {
+      var done = false, playStarted = false, durTimer = null, safeTimer = null;
       var audio = new Audio('/media/sounds/' + item.file);
       audio.volume = (item.volume != null ? item.volume : 0.8);
 
       function cleanup() {
-        if (done) return;
-        done = true;
-        clearTimeout(durTimer);
-        clearTimeout(safeTimer);
+        if (done) return; done = true;
+        clearTimeout(durTimer); clearTimeout(safeTimer);
         try { audio.pause(); } catch(e) {}
-        audio.oncanplay = null;
-        audio.oncanplaythrough = null;
-        audio.onloadeddata = null;
-        audio.onerror = null;
-        audio.onended = null;
-        audio.onstalled = null;
-        audio.removeAttribute('src');
-        audio.load();
-        dbg('Sound done: "' + item.file + '"');
-        finishCurrent();
+        audio.oncanplay = null; audio.oncanplaythrough = null; audio.onloadeddata = null;
+        audio.onerror = null; audio.onended = null; audio.onstalled = null;
+        audio.removeAttribute('src'); audio.load();
+        dbg('Sound done: "' + item.file + '"'); finishCurrent();
       }
 
       function attemptPlay() {
-        if (done || playStarted) return;
-        playStarted = true;
-
+        if (done || playStarted) return; playStarted = true;
         audio.play().then(function() {
           dbg('Sound spielt: "' + item.file + '"');
-          // Dauer-Override Timer starten NACH erfolgreichem Play
           if (item.durationOverride && item.durationOverride > 0) {
-            durTimer = setTimeout(function() {
-              dbg('Sound cut@' + item.durationOverride + 'ms: "' + item.file + '"');
-              cleanup();
-            }, item.durationOverride);
+            durTimer = setTimeout(function() { dbg('Sound cut@' + item.durationOverride + 'ms'); cleanup(); }, item.durationOverride);
           }
         }).catch(function(err) {
-          if (!audioUnlocked) {
-            dbg('AUDIO BLOCKIERT – Klick auf Overlay-Seite!');
-          } else {
-            dbg('Play rejected: ' + err.message);
-          }
+          if (!audioUnlocked) dbg('AUDIO BLOCKIERT – Klick!'); else dbg('Play rejected: ' + err.message);
           cleanup();
         });
       }
 
-      function onReady() {
-        if (done) return;
-        attemptPlay();
-      }
+      function onReady() { if (!done) attemptPlay(); }
 
-      // Safety-Timeout: dynamisch, kills nur wenn was echt stecken bleibt
-      safeTimer = setTimeout(function() {
-        dbg('SAFETY TIMEOUT (max ' + Math.round(calcSafetyTimeout(item)/1000) + 's): "' + item.file + '"');
-        cleanup();
-      }, calcSafetyTimeout(item));
-
-      // Multiple Events fuer Zuverlaessigkeit – {once:true} verhindert Mehrfachfeuer
+      safeTimer = setTimeout(function() { dbg('SAFETY TIMEOUT sound'); cleanup(); }, 120000);
       audio.addEventListener('canplaythrough', onReady, { once: true });
       audio.addEventListener('loadeddata', onReady, { once: true });
       audio.addEventListener('canplay', onReady, { once: true });
-
-      audio.addEventListener('ended', function() {
-        cleanup();
-      }, { once: true });
-
-      audio.addEventListener('error', function() {
-        dbg('Fehlt: /media/sounds/' + item.file);
-        cleanup();
-      }, { once: true });
-
-      audio.addEventListener('stalled', function() {
-        // Wenn nach 3s noch stalled, abbrechen
-        setTimeout(function() {
-          if (!done) {
-            dbg('Stalled timeout: "' + item.file + '"');
-            cleanup();
-          }
-        }, 3000);
-      }, { once: true });
-
+      audio.addEventListener('ended', function() { cleanup(); }, { once: true });
+      audio.addEventListener('error', function() { dbg('Fehlt: ' + item.file); cleanup(); }, { once: true });
+      audio.addEventListener('stalled', function() { setTimeout(function() { if (!done) { dbg('Stalled'); cleanup(); } }, 3000); }, { once: true });
       audio.load();
-
-      // Fallback: Falls keines der Events feuert (z.B. Browser-Cache liefert schon readyState=4)
-      setTimeout(function() {
-        if (!done && !playStarted && audio.readyState >= 2) {
-          attemptPlay();
-        }
-      }, 1500);
-
-      // Hartes Fallback: Falls nach 3s gar nichts passiert
-      setTimeout(function() {
-        if (!done && !playStarted) {
-          dbg('Fallback timeout: "' + item.file + '" (readyState=' + audio.readyState + ')');
-          cleanup();
-        }
-      }, 3000);
+      setTimeout(function() { if (!done && !playStarted && audio.readyState >= 2) attemptPlay(); }, 1500);
+      setTimeout(function() { if (!done && !playStarted) { dbg('Fallback timeout'); cleanup(); } }, 3000);
     }
 
     // =============================================
-    // Video Player
+    // Video Player (lokale Dateien)
     // =============================================
     function playVideo(item) {
-      var done = false;
-      var playStarted = false;
-      var durTimer = null;
-      var safeTimer = null;
+      var done = false, playStarted = false, durTimer = null, safeTimer = null;
 
       function cleanup() {
-        if (done) return;
-        done = true;
-        clearTimeout(durTimer);
-        clearTimeout(safeTimer);
-        videoPlayer.oncanplaythrough = null;
-        videoPlayer.onloadeddata = null;
-        videoPlayer.oncanplay = null;
-        videoPlayer.onerror = null;
-        videoPlayer.onended = null;
-        videoPlayer.onstalled = null;
+        if (done) return; done = true;
+        clearTimeout(durTimer); clearTimeout(safeTimer);
+        videoPlayer.oncanplaythrough = null; videoPlayer.onloadeddata = null;
+        videoPlayer.oncanplay = null; videoPlayer.onerror = null;
+        videoPlayer.onended = null; videoPlayer.onstalled = null;
         hideVideo();
-        dbg('Video done: "' + item.file + '"');
-        finishCurrent();
+        dbg('Video done: "' + item.file + '"'); finishCurrent();
       }
 
       function attemptPlay() {
-        if (done || playStarted) return;
-        playStarted = true;
-
+        if (done || playStarted) return; playStarted = true;
         videoPlayer.play().then(function() {
           dbg('Video spielt: "' + item.file + '"');
           if (item.durationOverride && item.durationOverride > 0) {
-            durTimer = setTimeout(function() {
-              dbg('Video cut@' + item.durationOverride + 'ms: "' + item.file + '"');
-              cleanup();
-            }, item.durationOverride);
+            durTimer = setTimeout(function() { dbg('Video cut@' + item.durationOverride + 'ms'); cleanup(); }, item.durationOverride);
           }
-        }).catch(function(err) {
-          dbg('Video play rejected: ' + err.message);
-          cleanup();
-        });
+        }).catch(function(err) { dbg('Video rejected: ' + err.message); cleanup(); });
       }
 
-      function onReady() {
-        if (done) return;
-        attemptPlay();
-      }
+      function onReady() { if (!done) attemptPlay(); }
 
-      // Safety-Timeout: dynamisch basierend auf Video-Laenge
-      safeTimer = setTimeout(function() {
-        dbg('SAFETY TIMEOUT video (max ' + Math.round(calcSafetyTimeout(item)/1000) + 's): "' + item.file + '"');
-        cleanup();
-      }, calcSafetyTimeout(item));
+      var dur = item.durationOverride;
+      var safetyMs = (dur && dur > 0) ? dur + 15000 : 600000;
+      safeTimer = setTimeout(function() { dbg('SAFETY TIMEOUT video'); cleanup(); }, safetyMs);
 
       videoPlayer.src = '/media/videos/' + item.file;
       videoPlayer.volume = (item.volume != null ? item.volume : 0.5);
@@ -460,54 +466,24 @@
       videoPlayer.addEventListener('canplaythrough', onReady, { once: true });
       videoPlayer.addEventListener('loadeddata', onReady, { once: true });
       videoPlayer.addEventListener('canplay', onReady, { once: true });
-
-      videoPlayer.addEventListener('ended', function() {
-        cleanup();
-      }, { once: true });
-
-      videoPlayer.addEventListener('error', function() {
-        dbg('Fehlt: /media/videos/' + item.file);
-        cleanup();
-      }, { once: true });
-
-      videoPlayer.addEventListener('stalled', function() {
-        setTimeout(function() {
-          if (!done) {
-            dbg('Video stalled timeout: "' + item.file + '"');
-            cleanup();
-          }
-        }, 3000);
-      }, { once: true });
-
+      videoPlayer.addEventListener('ended', function() { cleanup(); }, { once: true });
+      videoPlayer.addEventListener('error', function() { dbg('Fehlt: ' + item.file); cleanup(); }, { once: true });
+      videoPlayer.addEventListener('stalled', function() { setTimeout(function() { if (!done) { dbg('Video stalled'); cleanup(); } }, 3000); }, { once: true });
       videoPlayer.load();
-
-      // Fallback
-      setTimeout(function() {
-        if (!done && !playStarted && videoPlayer.readyState >= 2) {
-          attemptPlay();
-        }
-      }, 1500);
-
-      setTimeout(function() {
-        if (!done && !playStarted) {
-          dbg('Video fallback timeout: "' + item.file + '" (readyState=' + videoPlayer.readyState + ')');
-          cleanup();
-        }
-      }, 3000);
+      setTimeout(function() { if (!done && !playStarted && videoPlayer.readyState >= 2) attemptPlay(); }, 1500);
+      setTimeout(function() { if (!done && !playStarted) { dbg('Video fallback timeout'); cleanup(); } }, 3000);
     }
 
     function hideVideo() {
       videoContainer.style.animation = 'fadeOut 0.3s ease-in forwards';
       setTimeout(function() {
         videoContainer.style.display = 'none';
-        videoPlayer.pause();
-        videoPlayer.removeAttribute('src');
-        videoPlayer.load();
+        videoPlayer.pause(); videoPlayer.removeAttribute('src'); videoPlayer.load();
       }, 300);
     }
 
     // =============================================
-    // Debug Logger
+    // Debug
     // =============================================
     function dbg(msg) {
       var line = '[' + new Date().toLocaleTimeString('de-DE') + '] ' + msg;
@@ -518,7 +494,7 @@
     // =============================================
     // Start
     // =============================================
-    dbg('Overlay v3 geladen');
+    dbg('Overlay v4 geladen (Dateien + Embed)');
     connect();
   </script>
 </body>
