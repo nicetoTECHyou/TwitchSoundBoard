@@ -1,6 +1,6 @@
 {
   "name": "twitch-soundboard",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "TwitchSoundBoard – Lokales Sound-Alert System mit Admin Panel und OBS Overlay",
   "main": "server.js",
   "scripts": {

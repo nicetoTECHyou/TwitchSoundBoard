@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.9] – 2026-04-21
+
+### Fixed
+- **Overlay Queue Fix** – Nach dem ersten Sound konnte kein zweiter getriggert werden. `isPlaying` blieb permanent auf `true` wenn das Audio-Element nicht korrekt fertig wurde (z.B. stalled, langsame Verbindung, Browser-Autoplay-Block).
+- **Queue wurde nicht abgespielt** – Gleicher Root Cause: processQueue wurde nie wieder aufgerufen wenn ein vorheriges Item die Queue im blockierten Zustand hinterliess.
+- **Audio Autoplay** – Blockierender "Klick fuer Audio" Screen entfernt. Stattdessen: stummer Test-Autoplay beim Laden (funktioniert in OBS sofort), Klick-Unlock auf beliebige Stelle der Seite fuer Browser-Testing. Kleiner Status-Indikator im Debug-Modus.
+- **Safety Timeout** – Jedes Sound/Video hat jetzt einen 60-Sekunden Max-Timeout. Verhindert dass die Queue permanent blockiert wenn ein Media-Element stecken bleibt.
+- **Stalled Detection** – Wenn ein Audio/Video-Element "stalled" fuer mehr als 3 Sekunden, wird es abgebrochen und die Queue geht weiter.
+- **Multiple Ready Events** – canplaythrough, loadeddata, canplay – das Erste das feuert startet das Abspielen. Verhindert dass Sounds nie starten weil ein bestimmtes Event nicht feuert.
+- **playStarted Flag** – Verhindert dass `play()` doppelt aufgerufen wird wenn mehrere Events feuern.
+- **Hartes Fallback** – Falls nach 3 Sekunden kein Ready-Event und kein Play gestartet, wird das Item verworfen und die Queue geht weiter.
+
+### Changed
+- Overlay komplett neu geschrieben (v3) – robustere Queue-Verarbeitung, bessere Fehlerbehandlung, kein blockierendes UI mehr
+- Audio-Unlock ist jetzt transparent: OBS = sofort OK, Browser = beliebiger Klick auf die Seite
+
 ## [0.0.8] – 2026-04-21
 
 ### Added

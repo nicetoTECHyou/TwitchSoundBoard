@@ -30,23 +30,21 @@
       border-radius: 12px;
     }
 
-    /* Kleine Audio-Unlock Meldung – nicht blockierend */
-    #audio-hint {
+    /* Kleiner Audio-Status Indikator – nicht blockierend */
+    #audio-indicator {
       display: none;
       position: fixed;
       bottom: 8px; right: 8px;
-      background: rgba(0,0,0,0.7);
-      color: #adadb8;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font: 12px/1.4 'Segoe UI', sans-serif;
-      cursor: pointer;
+      background: rgba(0,0,0,0.6);
+      color: #ffa502;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font: 11px/1.4 'Segoe UI', sans-serif;
       z-index: 9000;
-      pointer-events: auto;
+      pointer-events: none;
       user-select: none;
     }
-    #audio-hint:hover { color: #efeff1; }
-    #audio-hint.hidden { display: none; }
+    #audio-indicator.ok { color: #00b894; }
 
     /* Debug */
     #debug-bar {
@@ -60,7 +58,8 @@
       font: 11px/1.5 monospace;
       z-index: 999;
       pointer-events: none;
-      max-width: 320px;
+      max-width: 360px;
+      word-break: break-all;
     }
 
     #ws-status {
@@ -93,70 +92,105 @@
     </div>
   </div>
 
-  <!-- Kleiner Hinweis statt grosses Overlay -->
-  <div id="audio-hint">&#128263; Klick fuer Audio</div>
-
+  <div id="audio-indicator"></div>
   <div id="debug-bar"></div>
   <div id="ws-status" class="err">&#11044; Waiting...</div>
 
   <script>
     // =============================================
-    // TwitchSoundBoard – OBS Overlay Client v2
+    // TwitchSoundBoard – OBS Overlay v3
+    // Robuste Queue, Safety-Timeouts, kein
+    // blockierender Audio-Unlock Screen
     // =============================================
 
     var queue = [];
     var isPlaying = false;
-    var audioCtx = null;
     var MAX_QUEUE = 10;
+    var SAFETY_TIMEOUT_MS = 60000; // Max 60s pro Item – verhindert永久 blockierte Queue
+    var audioUnlocked = false;
 
     var videoContainer = document.getElementById('video-container');
     var videoPlayer = document.getElementById('video-player');
     var debugBar = document.getElementById('debug-bar');
     var wsStatus = document.getElementById('ws-status');
-    var audioHint = document.getElementById('audio-hint');
+    var audioIndicator = document.getElementById('audio-indicator');
 
     var debug = new URLSearchParams(location.search).has('debug');
     if (debug) { debugBar.style.display = 'block'; wsStatus.style.display = 'block'; }
 
-    // ---- Audio Unlock ----
-    function tryUnlockAudio() {
-      if (audioCtx && audioCtx.state !== 'closed') return;
-      try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      } catch (e) { return; }
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume().then(function() {
-          audioHint.classList.add('hidden');
-          dbg('Audio freigeschaltet');
-        }).catch(function() {});
-      } else {
-        audioHint.classList.add('hidden');
-        dbg('Audio bereits freigeschaltet');
+    // =============================================
+    // Audio Unlock – kein blockierendes Overlay
+    // =============================================
+    // Stiller WAV-Clip (44 Bytes) um Autoplay-Berechtigung zu testen
+    var SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+    function tryAutoplayUnlock() {
+      var a = new Audio(SILENT_WAV);
+      a.volume = 0;
+      a.play().then(function() {
+        audioUnlocked = true;
+        a.pause();
+        a.src = '';
+        updateAudioIndicator();
+        dbg('Autoplay OK');
+      }).catch(function() {
+        a.src = '';
+        updateAudioIndicator();
+        dbg('Autoplay blockiert – Klick auf Overlay freischaltet');
+      });
+    }
+
+    function unlockAudio() {
+      if (audioUnlocked) return;
+      var a = new Audio(SILENT_WAV);
+      a.volume = 0;
+      a.play().then(function() {
+        audioUnlocked = true;
+        a.pause();
+        a.src = '';
+        updateAudioIndicator();
+        dbg('Audio freigeschaltet');
+      }).catch(function() { a.src = ''; });
+    }
+
+    function updateAudioIndicator() {
+      if (debug) {
+        audioIndicator.style.display = 'block';
+        if (audioUnlocked) {
+          audioIndicator.className = 'ok';
+          audioIndicator.textContent = '\u266B Audio OK';
+        } else {
+          audioIndicator.className = '';
+          audioIndicator.textContent = '\u266B Audio blockiert';
+        }
       }
     }
 
-    function isAudioUnlocked() {
-      if (!audioCtx) return false;
-      return audioCtx.state === 'running';
-    }
+    // OBS / Streamlabs: CEF erlaubt Autoplay immer
+    var isOBS = /obs|streamlabs|electron/i.test(navigator.userAgent);
 
-    // OBS User-Agent Check
-    var ua = navigator.userAgent.toLowerCase();
-    if (ua.indexOf('obs') !== -1 || ua.indexOf('streamlabs') !== -1 || ua.indexOf('electron') !== -1) {
-      tryUnlockAudio();
-      if (!isAudioUnlocked()) {
-        // OBS: trotzdem versuchen, Audio ohne Context abzuspielen
-        audioHint.classList.add('hidden');
-      }
+    if (isOBS) {
+      audioUnlocked = true;
+      updateAudioIndicator();
+      dbg('OBS erkannt – Autoplay aktiv');
     } else {
-      // Browser: Hinweis anzeigen
-      audioHint.style.display = 'block';
+      tryAutoplayUnlock();
     }
 
-    audioHint.addEventListener('click', function() { tryUnlockAudio(); });
-    document.body.addEventListener('click', function() { tryUnlockAudio(); });
+    // Beliebiger Klick/Touch auf der Seite schaltet Audio frei
+    ['click', 'keydown', 'touchstart', 'pointerdown'].forEach(function(evt) {
+      document.addEventListener(evt, function() {
+        unlockAudio();
+        // Sofort verarbeitete Queue abarbeiten falls was wartet
+        if (queue.length > 0 && !isPlaying) {
+          processQueue();
+        }
+      });
+    });
 
-    // ---- WebSocket ----
+    // =============================================
+    // WebSocket – Auto-Reconnect
+    // =============================================
     function wsUrl() {
       var port = parseInt(location.port) || 3000;
       return 'ws://' + location.hostname + ':' + (port + 1);
@@ -176,7 +210,7 @@
       };
 
       ws.onmessage = function(e) {
-        try { handle(JSON.parse(e.data)); }
+        try { handleMessage(JSON.parse(e.data)); }
         catch (err) { dbg('Parse-Fehler: ' + err.message); }
       };
 
@@ -190,24 +224,29 @@
     }
 
     function reconnect() {
-      if (reconnects >= 60) return dbg('Max Reconnects erreicht');
+      if (reconnects >= 60) return dbg('Max Reconnects');
       reconnects++;
       var ms = Math.min(1000 * Math.pow(1.4, reconnects - 1), 30000);
       dbg('Reconnect in ' + Math.round(ms / 1000) + 's (#' + reconnects + ')');
       setTimeout(connect, ms);
     }
 
-    function handle(data) {
+    function handleMessage(data) {
       if (data.type === 'play') return enqueue(data);
-      if (data.type === 'init' || data.type === 'config_reloaded') return dbg('Config aktualisiert');
+      if (data.type === 'init' || data.type === 'config_reloaded') return dbg('Config OK');
     }
 
-    // ---- Queue ----
+    // =============================================
+    // Queue – robust und einfach
+    // =============================================
     function enqueue(data) {
       var max = data.maxQueue || MAX_QUEUE;
-      if (queue.length >= max) return dbg('Queue voll (' + max + '), verworfen: ' + data.file);
+      if (queue.length >= max) {
+        dbg('Queue voll (' + max + '), drop: ' + data.file);
+        return;
+      }
       queue.push(data);
-      dbg('+ "' + data.file + '" von ' + data.user + ' via ' + data.source + ' [Queue: ' + queue.length + ']');
+      dbg('+ "' + data.file + '" von ' + (data.user || '?') + ' [' + queue.length + ']');
       if (!isPlaying) processQueue();
     }
 
@@ -219,128 +258,229 @@
       }
       isPlaying = true;
       var item = queue.shift();
-      dbg('> Spielen: "' + item.file + '" (' + item.mediaType + ') [Queue: ' + queue.length + ']');
+      dbg('> Spiele: "' + item.file + '" (' + (item.mediaType || 'sound') + ') [Q: ' + queue.length + ']');
       try {
-        item.mediaType === 'video' ? playVideo(item) : playSound(item);
+        if (item.mediaType === 'video') {
+          playVideo(item);
+        } else {
+          playSound(item);
+        }
       } catch (e) {
-        dbg('Fehler bei play: ' + e.message);
-        finished();
+        dbg('Play Exception: ' + e.message);
+        finishCurrent();
       }
     }
 
-    // finished() ist die EINZIGE Funktion die next() aufrufen darf
-    // Verhindert Doppelaufrufe von onended + durTimer + onerror
-    function finished() {
+    // Wird NUR aus cleanup-Funktionen aufgerufen, niemals direkt
+    function finishCurrent() {
       if (!isPlaying) return;
       isPlaying = false;
-      setTimeout(processQueue, 150);
+      setTimeout(function() { processQueue(); }, 120);
     }
 
-    // ---- Sound ----
+    // =============================================
+    // Sound Player
+    // =============================================
     function playSound(item) {
-      var a = new Audio('/media/sounds/' + item.file);
-      a.volume = item.volume != null ? item.volume : 0.8;
       var done = false;
+      var playStarted = false;
       var durTimer = null;
+      var safeTimer = null;
 
-      function doFinish() {
+      var audio = new Audio('/media/sounds/' + item.file);
+      audio.volume = (item.volume != null ? item.volume : 0.8);
+
+      function cleanup() {
         if (done) return;
         done = true;
         clearTimeout(durTimer);
-        try { a.pause(); } catch (e) {}
-        a.oncanplaythrough = null;
-        a.onerror = null;
-        a.onended = null;
-        a.src = '';
-        dbg('Sound fertig: "' + item.file + '"');
-        finished();
+        clearTimeout(safeTimer);
+        try { audio.pause(); } catch(e) {}
+        audio.oncanplay = null;
+        audio.oncanplaythrough = null;
+        audio.onloadeddata = null;
+        audio.onerror = null;
+        audio.onended = null;
+        audio.onstalled = null;
+        audio.removeAttribute('src');
+        audio.load();
+        dbg('Sound done: "' + item.file + '"');
+        finishCurrent();
       }
 
-      a.oncanplaythrough = function() {
-        if (done) return;
-        a.oncanplaythrough = null;
-        a.play().catch(function(err) {
-          dbg('Play rejected: ' + err.message);
-          doFinish();
-        });
-        if (item.durationOverride && item.durationOverride > 0) {
-          durTimer = setTimeout(function() {
-            dbg('Sound abgeschnitten nach ' + item.durationOverride + 'ms');
-            doFinish();
-          }, item.durationOverride);
-        }
-      };
+      function attemptPlay() {
+        if (done || playStarted) return;
+        playStarted = true;
 
-      a.onerror = function() {
-        dbg('Fehlt: /media/sounds/' + item.file);
-        doFinish();
-      };
-
-      a.onended = function() {
-        doFinish();
-      };
-
-      // Fallback: falls canplaythrough nie feuert
-      a.load();
-      setTimeout(function() {
-        if (!done && a.readyState >= 3) {
-          a.play().catch(function() { doFinish(); });
-          if (item.durationOverride && item.durationOverride > 0 && !durTimer) {
-            durTimer = setTimeout(doFinish, item.durationOverride);
+        audio.play().then(function() {
+          dbg('Sound spielt: "' + item.file + '"');
+          // Dauer-Override Timer starten NACH erfolgreichem Play
+          if (item.durationOverride && item.durationOverride > 0) {
+            durTimer = setTimeout(function() {
+              dbg('Sound cut@' + item.durationOverride + 'ms: "' + item.file + '"');
+              cleanup();
+            }, item.durationOverride);
           }
+        }).catch(function(err) {
+          if (!audioUnlocked) {
+            dbg('AUDIO BLOCKIERT – Klick auf Overlay-Seite!');
+          } else {
+            dbg('Play rejected: ' + err.message);
+          }
+          cleanup();
+        });
+      }
+
+      function onReady() {
+        if (done) return;
+        attemptPlay();
+      }
+
+      // Sicherheit: Max 60 Sekunden pro Sound
+      safeTimer = setTimeout(function() {
+        dbg('SAFETY TIMEOUT: "' + item.file + '"');
+        cleanup();
+      }, SAFETY_TIMEOUT_MS);
+
+      // Multiple Events fuer Zuverlaessigkeit – {once:true} verhindert Mehrfachfeuer
+      audio.addEventListener('canplaythrough', onReady, { once: true });
+      audio.addEventListener('loadeddata', onReady, { once: true });
+      audio.addEventListener('canplay', onReady, { once: true });
+
+      audio.addEventListener('ended', function() {
+        cleanup();
+      }, { once: true });
+
+      audio.addEventListener('error', function() {
+        dbg('Fehlt: /media/sounds/' + item.file);
+        cleanup();
+      }, { once: true });
+
+      audio.addEventListener('stalled', function() {
+        // Wenn nach 3s noch stalled, abbrechen
+        setTimeout(function() {
+          if (!done) {
+            dbg('Stalled timeout: "' + item.file + '"');
+            cleanup();
+          }
+        }, 3000);
+      }, { once: true });
+
+      audio.load();
+
+      // Fallback: Falls keines der Events feuert (z.B. Browser-Cache liefert schon readyState=4)
+      setTimeout(function() {
+        if (!done && !playStarted && audio.readyState >= 2) {
+          attemptPlay();
         }
-      }, 500);
+      }, 1500);
+
+      // Hartes Fallback: Falls nach 3s gar nichts passiert
+      setTimeout(function() {
+        if (!done && !playStarted) {
+          dbg('Fallback timeout: "' + item.file + '" (readyState=' + audio.readyState + ')');
+          cleanup();
+        }
+      }, 3000);
     }
 
-    // ---- Video ----
+    // =============================================
+    // Video Player
+    // =============================================
     function playVideo(item) {
       var done = false;
+      var playStarted = false;
       var durTimer = null;
+      var safeTimer = null;
 
-      function doFinish() {
+      function cleanup() {
         if (done) return;
         done = true;
         clearTimeout(durTimer);
+        clearTimeout(safeTimer);
         videoPlayer.oncanplaythrough = null;
+        videoPlayer.onloadeddata = null;
+        videoPlayer.oncanplay = null;
         videoPlayer.onerror = null;
         videoPlayer.onended = null;
+        videoPlayer.onstalled = null;
         hideVideo();
-        dbg('Video fertig: "' + item.file + '"');
-        finished();
+        dbg('Video done: "' + item.file + '"');
+        finishCurrent();
       }
 
+      function attemptPlay() {
+        if (done || playStarted) return;
+        playStarted = true;
+
+        videoPlayer.play().then(function() {
+          dbg('Video spielt: "' + item.file + '"');
+          if (item.durationOverride && item.durationOverride > 0) {
+            durTimer = setTimeout(function() {
+              dbg('Video cut@' + item.durationOverride + 'ms: "' + item.file + '"');
+              cleanup();
+            }, item.durationOverride);
+          }
+        }).catch(function(err) {
+          dbg('Video play rejected: ' + err.message);
+          cleanup();
+        });
+      }
+
+      function onReady() {
+        if (done) return;
+        attemptPlay();
+      }
+
+      // Sicherheit: Max 60 Sekunden pro Video
+      safeTimer = setTimeout(function() {
+        dbg('SAFETY TIMEOUT video: "' + item.file + '"');
+        cleanup();
+      }, SAFETY_TIMEOUT_MS);
+
       videoPlayer.src = '/media/videos/' + item.file;
-      videoPlayer.volume = item.volume != null ? item.volume : 0.5;
+      videoPlayer.volume = (item.volume != null ? item.volume : 0.5);
       videoPlayer.currentTime = 0;
       videoContainer.style.display = 'block';
       videoContainer.style.animation = 'fadeIn 0.2s ease-out';
 
-      videoPlayer.oncanplaythrough = function() {
-        if (done) return;
-        videoPlayer.oncanplaythrough = null;
-        videoPlayer.play().catch(function(err) {
-          dbg('Video play rejected: ' + err.message);
-          doFinish();
-        });
-      };
+      videoPlayer.addEventListener('canplaythrough', onReady, { once: true });
+      videoPlayer.addEventListener('loadeddata', onReady, { once: true });
+      videoPlayer.addEventListener('canplay', onReady, { once: true });
 
-      videoPlayer.onerror = function() {
+      videoPlayer.addEventListener('ended', function() {
+        cleanup();
+      }, { once: true });
+
+      videoPlayer.addEventListener('error', function() {
         dbg('Fehlt: /media/videos/' + item.file);
-        doFinish();
-      };
+        cleanup();
+      }, { once: true });
 
-      videoPlayer.onended = function() {
-        doFinish();
-      };
+      videoPlayer.addEventListener('stalled', function() {
+        setTimeout(function() {
+          if (!done) {
+            dbg('Video stalled timeout: "' + item.file + '"');
+            cleanup();
+          }
+        }, 3000);
+      }, { once: true });
 
-      // Duration Override
-      var dur = item.durationOverride || 5000;
-      if (dur > 0) {
-        durTimer = setTimeout(function() {
-          dbg('Video gestoppt nach ' + dur + 'ms');
-          doFinish();
-        }, dur);
-      }
+      videoPlayer.load();
+
+      // Fallback
+      setTimeout(function() {
+        if (!done && !playStarted && videoPlayer.readyState >= 2) {
+          attemptPlay();
+        }
+      }, 1500);
+
+      setTimeout(function() {
+        if (!done && !playStarted) {
+          dbg('Video fallback timeout: "' + item.file + '" (readyState=' + videoPlayer.readyState + ')');
+          cleanup();
+        }
+      }, 3000);
     }
 
     function hideVideo() {
@@ -353,14 +493,19 @@
       }, 300);
     }
 
+    // =============================================
+    // Debug Logger
+    // =============================================
     function dbg(msg) {
       var line = '[' + new Date().toLocaleTimeString('de-DE') + '] ' + msg;
       console.log(line);
       if (debug) debugBar.textContent = line;
     }
 
-    // ---- Start ----
-    dbg('Overlay geladen – v2');
+    // =============================================
+    // Start
+    // =============================================
+    dbg('Overlay v3 geladen');
     connect();
   </script>
 </body>

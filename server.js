@@ -1,5 +1,5 @@
 // =============================================
-// TwitchSoundBoard – Server v0.0.8
+// TwitchSoundBoard – Server v0.0.9
 // Lokal, kein HTTPS, kein Crash
 // =============================================
 
