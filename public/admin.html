@@ -5,106 +5,178 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TwitchSoundBoard – Admin</title>
   <style>
-    :root {
-      --bg: #0e0e10; --surface: #18181b; --surface2: #1f1f23; --border: #2f2f35;
-      --text: #efeff1; --dim: #adadb8; --accent: #9147ff; --accent2: #772ce8;
-      --green: #00b894; --red: #ff4757; --orange: #ffa502; --r: 8px;
-    }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family:'Segoe UI',-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+    :root{--bg:#0e0e10;--sf:#18181b;--sf2:#1f1f23;--bd:#2f2f35;--tx:#efeff1;--dm:#adadb8;--ac:#9147ff;--ac2:#772ce8;--gn:#00b894;--rd:#ff4757;--or:#ffa502;--r:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI',-apple-system,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh}
+    .header{background:var(--sf);border-bottom:1px solid var(--bd);padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+    .header h1{font-size:18px;font-weight:600}
+    .header .ver{font-size:12px;color:var(--dm);background:var(--sf2);padding:4px 10px;border-radius:12px}
+    .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--rd)}
+    .dot.on{background:var(--gn)}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    .tabs{display:flex;gap:4px;margin-bottom:24px;border-bottom:1px solid var(--bd)}
+    .tab{padding:10px 20px;cursor:pointer;color:var(--dm);border-bottom:2px solid transparent;font-size:14px;font-weight:500;transition:.15s}
+    .tab:hover{color:var(--tx)}.tab.on{color:var(--ac);border-bottom-color:var(--ac)}
+    .tc{display:none}.tc.on{display:block}
+    .card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:20px;margin-bottom:16px}
+    .card h3{font-size:15px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+    .card .sub{font-size:12px;color:var(--dm);font-weight:400;margin-left:auto}
 
-    .header { background:var(--surface); border-bottom:1px solid var(--border); padding:14px 24px; display:flex; align-items:center; justify-content:space-between; }
-    .header h1 { font-size:18px; font-weight:600; }
-    .header .ver { font-size:12px; color:var(--dim); background:var(--surface2); padding:4px 10px; border-radius:12px; }
-    .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; background:var(--red); }
-    .dot.on { background:var(--green); }
+    .upload-zone{border:2px dashed var(--bd);border-radius:var(--r);padding:40px;text-align:center;cursor:pointer;transition:.2s;color:var(--dm)}
+    .upload-zone:hover,.upload-zone.drag{border-color:var(--ac);background:rgba(145,71,255,.05)}
+    .upload-zone .ico{font-size:36px;margin-bottom:10px}
+    .upload-zone .hint{font-size:12px;margin-top:8px}
 
-    .wrap { max-width:1100px; margin:0 auto; padding:24px; }
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin-top:14px}
+    .fcard{background:var(--sf2);border:1px solid var(--bd);border-radius:var(--r);padding:12px}
+    .fcard .fn{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+    .fcard .fm{font-size:11px;color:var(--dm)}
+    .fcard .acts{display:flex;gap:6px;margin-top:8px}
+    .fcard .tag{display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;background:var(--ac);color:#fff;margin-top:6px}
 
-    .tabs { display:flex; gap:4px; margin-bottom:24px; border-bottom:1px solid var(--border); }
-    .tab { padding:10px 20px; cursor:pointer; color:var(--dim); border-bottom:2px solid transparent; font-size:14px; font-weight:500; transition:0.15s; }
-    .tab:hover { color:var(--text); }
-    .tab.on { color:var(--accent); border-bottom-color:var(--accent); }
-    .tc { display:none; } .tc.on { display:block; }
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:500;transition:.15s}
+    .bp{background:var(--ac);color:#fff}.bp:hover{background:var(--ac2)}
+    .bs{background:var(--sf2);color:var(--tx);border:1px solid var(--bd)}.bs:hover{background:var(--bd)}
+    .bd{background:transparent;color:var(--rd);border:1px solid var(--rd)}.bd:hover{background:var(--rd);color:#fff}
+    .bg{background:var(--gn);color:#fff}.bg:hover{background:#00a383}
+    .br{background:var(--rd);color:#fff}.br:hover{background:#e0392b}
+    .sm{padding:5px 10px;font-size:12px}
+    .bi{padding:6px;min-width:32px;justify-content:center}
+    .lg{padding:12px 28px;font-size:15px;font-weight:600}
 
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:20px; margin-bottom:16px; }
-    .card h3 { font-size:15px; font-weight:600; margin-bottom:16px; }
+    .fr{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+    .fg{flex:1}.fg label{display:block;font-size:12px;color:var(--dm);margin-bottom:4px}
+    input,select{width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--bd);border-radius:var(--r);color:var(--tx);font-size:13px;outline:none}
+    input:focus,select:focus{border-color:var(--ac)}
+    input.pw{-webkit-text-security:disc;letter-spacing:2px}
 
-    .upload-zone { border:2px dashed var(--border); border-radius:var(--r); padding:40px; text-align:center; cursor:pointer; transition:0.2s; color:var(--dim); }
-    .upload-zone:hover,.upload-zone.drag { border-color:var(--accent); background:rgba(145,71,255,0.05); }
-    .upload-zone .ico { font-size:36px; margin-bottom:10px; }
-    .upload-zone .hint { font-size:12px; margin-top:8px; }
+    .clist{list-style:none}
+    .citem{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:8px}
+    .citem:hover{background:var(--bd)}
+    .citem .cn{font-weight:600;font-size:14px;color:var(--ac);min-width:120px}
+    .citem .cf{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .citem .ct{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--sf);color:var(--dm);min-width:50px;text-align:center}
+    .empty{text-align:center;padding:30px;color:var(--dm);font-size:13px}
 
-    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; margin-top:14px; }
-    .fcard { background:var(--surface2); border:1px solid var(--border); border-radius:var(--r); padding:12px; }
-    .fcard .fn { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-bottom:4px; }
-    .fcard .fm { font-size:11px; color:var(--dim); }
-    .fcard .acts { display:flex; gap:6px; margin-top:8px; }
-    .fcard .tag { display:inline-block; font-size:10px; padding:2px 8px; border-radius:4px; background:var(--accent); color:#fff; margin-top:6px; }
+    .sgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .si label{display:block;font-size:12px;color:var(--dm);margin-bottom:4px}
+    .si input[type=range]{-webkit-appearance:none;height:6px;background:var(--bd);border:none;border-radius:3px}
+    .si input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--ac);cursor:pointer}
+    .si .rv{font-size:12px;color:var(--ac);float:right}
 
-    .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border:none; border-radius:var(--r); cursor:pointer; font-size:13px; font-weight:500; transition:0.15s; }
-    .bp { background:var(--accent); color:#fff; } .bp:hover { background:var(--accent2); }
-    .bs { background:var(--surface2); color:var(--text); border:1px solid var(--border); } .bs:hover { background:var(--border); }
-    .bd { background:transparent; color:var(--red); border:1px solid var(--red); } .bd:hover { background:var(--red); color:#fff; }
-    .bg { background:var(--green); color:#fff; } .bg:hover { background:#00a383; }
-    .sm { padding:5px 10px; font-size:12px; }
-    .ico { padding:6px; min-width:32px; justify-content:center; }
+    .obs-box{background:var(--sf2);border:1px solid var(--ac);border-radius:var(--r);padding:16px;margin-top:12px}
+    .obs-box code{display:block;background:var(--bg);padding:10px 14px;border-radius:4px;font-size:13px;margin-top:6px;word-break:break-all;user-select:all}
 
-    .fr { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
-    .fg { flex:1; } .fg label { display:block; font-size:12px; color:var(--dim); margin-bottom:4px; }
-    input,select { width:100%; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:var(--r); color:var(--text); font-size:13px; outline:none; }
-    input:focus,select:focus { border-color:var(--accent); }
+    .tog{position:relative;width:40px;height:22px;background:var(--bd);border-radius:11px;cursor:pointer;transition:.2s}
+    .tog.on{background:var(--ac)}
+    .tog::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:50%;transition:.2s}
+    .tog.on::after{transform:translateX(18px)}
 
-    .clist { list-style:none; }
-    .citem { display:flex; align-items:center; gap:12px; padding:10px 14px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--r); margin-bottom:8px; }
-    .citem:hover { background:var(--border); }
-    .citem .cn { font-weight:600; font-size:14px; color:var(--accent); min-width:120px; }
-    .citem .cf { flex:1; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .citem .ct { font-size:11px; padding:2px 8px; border-radius:4px; background:var(--surface); color:var(--dim); min-width:50px; text-align:center; }
-    .empty { text-align:center; padding:30px; color:var(--dim); font-size:13px; }
+    .twitch-box{background:var(--sf2);border:1px solid var(--bd);border-radius:var(--r);padding:20px;margin-bottom:16px;text-align:center}
+    .twitch-box.connected{border-color:var(--gn)}
+    .twitch-box.connected .twitch-status{color:var(--gn)}
+    .twitch-box.disconnected{border-color:var(--bd)}
+    .twitch-box.disconnected .twitch-status{color:var(--rd)}
+    .twitch-status{font-size:24px;font-weight:700;margin-bottom:4px}
+    .twitch-sub{font-size:12px;color:var(--dm)}
 
-    .sgrid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-    .si label { display:block; font-size:12px; color:var(--dim); margin-bottom:4px; }
-    .si input[type=range] { -webkit-appearance:none; height:6px; background:var(--border); border:none; border-radius:3px; }
-    .si input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; }
-    .si .rv { font-size:12px; color:var(--accent); float:right; }
+    .cred-grid{display:grid;gap:14px}
+    .cred-row{display:flex;gap:10px;align-items:flex-end}
+    .cred-row .fg{flex:1}
+    .cred-row .toggle-vis{padding:8px 12px;min-width:44px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--r);cursor:pointer;color:var(--dm);font-size:14px;text-align:center}
+    .cred-row .toggle-vis:hover{background:var(--bd);color:var(--tx)}
 
-    .obs-box { background:var(--surface2); border:1px solid var(--accent); border-radius:var(--r); padding:16px; margin-top:12px; }
-    .obs-box code { display:block; background:var(--bg); padding:10px 14px; border-radius:4px; font-size:13px; margin-top:6px; word-break:break-all; user-select:all; }
+    .toast-wrap{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+    .toast{padding:12px 20px;border-radius:var(--r);font-size:13px;color:#fff;animation:si .3s;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+    .toast.ok{background:var(--gn)}.toast.err{background:var(--rd)}.toast.inf{background:var(--ac)}
+    @keyframes si{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}
 
-    .tog { position:relative; width:40px; height:22px; background:var(--border); border-radius:11px; cursor:pointer; transition:0.2s; }
-    .tog.on { background:var(--accent); }
-    .tog::after { content:''; position:absolute; top:3px; left:3px; width:16px; height:16px; background:#fff; border-radius:50%; transition:0.2s; }
-    .tog.on::after { transform:translateX(18px); }
+    .sg{display:flex;flex-direction:column;gap:8px;font-size:13px}
+    .sr{display:flex;align-items:center;gap:8px}
+    a{color:var(--ac)}
+    a:hover{text-decoration:underline}
 
-    .toast-wrap { position:fixed; top:20px; right:20px; z-index:9999; display:flex; flex-direction:column; gap:8px; }
-    .toast { padding:12px 20px; border-radius:var(--r); font-size:13px; color:#fff; animation:si 0.3s; box-shadow:0 4px 12px rgba(0,0,0,0.3); }
-    .toast.ok { background:var(--green); } .toast.err { background:var(--red); } .toast.inf { background:var(--accent); }
-    @keyframes si { from{transform:translateX(100px);opacity:0} to{transform:translateX(0);opacity:1} }
-
-    .status-grid { display:flex; flex-direction:column; gap:8px; font-size:13px; }
-    .status-row { display:flex; align-items:center; gap:8px; }
-
-    @media(max-width:768px) { .sgrid{grid-template-columns:1fr;} .grid{grid-template-columns:1fr;} }
+    @media(max-width:768px){.sgrid{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.cred-row{flex-direction:column}}
   </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>TwitchSoundBoard <span class="dot" id="sDot"></span><span id="sTxt" style="font-size:13px;color:var(--dim)">...</span></h1>
+  <h1>TwitchSoundBoard <span class="dot on" id="sDot"></span></h1>
   <span class="ver" id="verBadge">v0.0.0</span>
 </div>
 
 <div class="wrap">
   <div class="tabs">
-    <div class="tab on" data-t="sounds">Sounds & Videos</div>
+    <div class="tab" data-t="sounds">Sounds & Videos</div>
     <div class="tab" data-t="commands">Chat-Commands</div>
+    <div class="tab on" data-t="twitch">Twitch</div>
     <div class="tab" data-t="settings">Einstellungen</div>
-    <div class="tab" data-t="obs">OBS Overlay</div>
+    <div class="tab" data-t="obs">OBS</div>
   </div>
 
-  <!-- Sounds & Videos -->
-  <div class="tc on" id="t-sounds">
+  <!-- ====== TWITCH ====== -->
+  <div class="tc on" id="t-twitch">
+
+    <div class="twitch-box disconnected" id="twBox">
+      <div class="twitch-status" id="twLabel">Getrennt</div>
+      <div class="twitch-sub" id="twSub">Trage unten deine Daten ein und starte den Bot</div>
+    </div>
+
+    <div class="card">
+      <h3>Twitch Credentials <span class="sub">Verschluesselt auf deinem Rechner</span></h3>
+      <div class="cred-grid">
+        <div class="cred-row">
+          <div class="fg">
+            <label>Kanalname</label>
+            <input type="text" id="crCh" placeholder="dein_kanalname">
+          </div>
+        </div>
+        <div class="cred-row">
+          <div class="fg">
+            <label>Bot-Token <a href="https://twitchapps.com/tmi/" target="_blank">(hier erstellen)</a></label>
+            <input type="password" class="pw" id="crTok" placeholder="oauth:xxxxxxxxxxxx">
+          </div>
+          <div class="toggle-vis" onclick="togglePw('crTok')" title="Sichtbar machen">&#128065;</div>
+        </div>
+        <div class="cred-row">
+          <div class="fg">
+            <label>Client ID <span style="color:var(--dm)">(optional)</span></label>
+            <input type="password" class="pw" id="crCid" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+          </div>
+          <div class="toggle-vis" onclick="togglePw('crCid')" title="Sichtbar machen">&#128065;</div>
+        </div>
+        <div class="cred-row">
+          <div class="fg">
+            <label>Client Secret <span style="color:var(--dm)">(optional)</span></label>
+            <input type="password" class="pw" id="crCsec" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+          </div>
+          <div class="toggle-vis" onclick="togglePw('crCsec')" title="Sichtbar machen">&#128065;</div>
+        </div>
+      </div>
+      <div style="margin-top:18px;display:flex;gap:10px;align-items:center">
+        <button class="btn bg lg" onclick="saveCreds()">Speichern</button>
+        <button class="btn bp lg" id="twStartBtn" onclick="startBot()">Soundbot Starten</button>
+        <button class="btn br lg" id="twStopBtn" onclick="stopBot()" style="display:none">Stoppen</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Anleitung</h3>
+      <div style="font-size:13px;color:var(--dm);line-height:1.8">
+        <strong>1.</strong> Bot-Token erstellen: <a href="https://twitchapps.com/tmi/" target="_blank">twitchapps.com/tmi</a> (mit deinem Twitch-Account einloggen)<br>
+        <strong>2.</strong> Kanalname eintragen<br>
+        <strong>3.</strong> Bot-Token einfuegen<br>
+        <strong>4.</strong> <strong>Speichern</strong> klicken (wird verschluesselt auf deinem PC gespeichert)<br>
+        <strong>5.</strong> <strong>Soundbot Starten</strong> klicken<br>
+        <br>
+        <strong style="color:var(--tx)">Hinweis:</strong> Alle Credentials werden AES-256 verschluesselt in einer lokalen Datei gespeichert. Sie verlassen nie deinen Rechner.
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== SOUNDS ====== -->
+  <div class="tc" id="t-sounds">
     <div class="card">
       <h3>Upload</h3>
       <div class="upload-zone" id="upZone">
@@ -115,33 +187,25 @@
       </div>
     </div>
     <div class="card">
-      <h3>Sounds <span id="sC" style="font-weight:400;color:var(--dim);font-size:12px"></span></h3>
+      <h3>Sounds <span id="sC" style="font-weight:400;color:var(--dm);font-size:12px"></span></h3>
       <div class="grid" id="sG"></div>
       <div class="empty" id="sE">Noch keine Sounds.</div>
     </div>
     <div class="card">
-      <h3>Videos <span id="vC" style="font-weight:400;color:var(--dim);font-size:12px"></span></h3>
+      <h3>Videos <span id="vC" style="font-weight:400;color:var(--dm);font-size:12px"></span></h3>
       <div class="grid" id="vG"></div>
       <div class="empty" id="vE">Noch keine Videos.</div>
     </div>
   </div>
 
-  <!-- Commands -->
+  <!-- ====== COMMANDS ====== -->
   <div class="tc" id="t-commands">
     <div class="card">
       <h3>Neuer Chat-Command</h3>
       <div class="fr">
-        <div class="fg" style="max-width:180px">
-          <label>Command</label>
-          <input type="text" id="cN" placeholder="!airhorn">
-        </div>
-        <div class="fg">
-          <label>Sound / Video</label>
-          <select id="cF"></select>
-        </div>
-        <div>
-          <button class="btn bp" onclick="addCmd()">Hinzufuegen</button>
-        </div>
+        <div class="fg" style="max-width:180px"><label>Command</label><input type="text" id="cN" placeholder="!airhorn"></div>
+        <div class="fg"><label>Sound / Video</label><select id="cF"></select></div>
+        <div><button class="btn bp" onclick="addCmd()">Hinzufuegen</button></div>
       </div>
     </div>
     <div class="card">
@@ -151,80 +215,36 @@
     </div>
   </div>
 
-  <!-- Settings -->
+  <!-- ====== SETTINGS ====== -->
   <div class="tc" id="t-settings">
     <div class="card">
       <h3>Allgemein</h3>
       <div class="sgrid">
-        <div class="si">
-          <label>Befehls-Praefix</label>
-          <input type="text" id="sPfx" value="!">
-        </div>
-        <div class="si">
-          <label>Max. Queue-Laenge</label>
-          <input type="number" id="sQ" min="1" max="50" value="10">
-        </div>
-        <div class="si">
-          <label>Sound-Lautstaerke <span class="rv" id="rvS">80%</span></label>
-          <input type="range" id="sVS" min="0" max="1" step="0.05" value="0.8" oninput="document.getElementById('rvS').textContent=Math.round(this.value*100)+'%'">
-        </div>
-        <div class="si">
-          <label>Video-Lautstaerke <span class="rv" id="rvV">50%</span></label>
-          <input type="range" id="sVV" min="0" max="1" step="0.05" value="0.5" oninput="document.getElementById('rvV').textContent=Math.round(this.value*100)+'%'">
-        </div>
-        <div class="si">
-          <label>Video max. Dauer (ms)</label>
-          <input type="number" id="sVD" min="1000" max="30000" step="500" value="5000">
-        </div>
+        <div class="si"><label>Befehls-Praefix</label><input type="text" id="sPfx" value="!"></div>
+        <div class="si"><label>Max. Queue-Laenge</label><input type="number" id="sQ" min="1" max="50" value="10"></div>
+        <div class="si"><label>Sound-Lautstaerke <span class="rv" id="rvS">80%</span></label><input type="range" id="sVS" min="0" max="1" step="0.05" value="0.8" oninput="document.getElementById('rvS').textContent=Math.round(this.value*100)+'%'"></div>
+        <div class="si"><label>Video-Lautstaerke <span class="rv" id="rvV">50%</span></label><input type="range" id="sVV" min="0" max="1" step="0.05" value="0.5" oninput="document.getElementById('rvV').textContent=Math.round(this.value*100)+'%'"></div>
+        <div class="si"><label>Video max. Dauer (ms)</label><input type="number" id="sVD" min="1000" max="30000" step="500" value="5000"></div>
         <div class="si">
           <label style="margin-bottom:8px">Sounds uebereinander</label>
-          <div style="display:flex;align-items:center;gap:10px">
-            <div class="tog" id="sOv" onclick="this.classList.toggle('on')"></div>
-            <span style="font-size:13px;color:var(--dim)">Gleichzeitiges Abspielen erlauben</span>
-          </div>
+          <div style="display:flex;align-items:center;gap:10px"><div class="tog" id="sOv" onclick="this.classList.toggle('on')"></div><span style="font-size:13px;color:var(--dm)">Gleichzeitiges Abspielen</span></div>
         </div>
       </div>
-      <div style="margin-top:20px">
-        <button class="btn bp" onclick="saveSet()">Speichern</button>
-      </div>
+      <div style="margin-top:20px"><button class="btn bp" onclick="saveSet()">Speichern</button></div>
     </div>
   </div>
 
-  <!-- OBS -->
+  <!-- ====== OBS ====== -->
   <div class="tc" id="t-obs">
     <div class="card">
       <h3>OBS Browser-Quelle</h3>
-      <p style="font-size:13px;color:var(--dim);margin-bottom:14px">
-        1. OBS oeffnen<br>
-        2. Browserquelle hinzufuegen<br>
-        3. URL unten reinkopieren
-      </p>
-      <div class="obs-box">
-        <strong style="font-size:12px;color:var(--dim)">Overlay URL:</strong>
-        <code id="obsU">http://localhost:3000/overlay</code>
-      </div>
-      <div class="obs-box" style="margin-top:10px;border-color:var(--border)">
-        <strong style="font-size:12px;color:var(--dim)">Debug (mit Statusanzeige):</strong>
-        <code id="obsUD">http://localhost:3000/overlay?debug</code>
-      </div>
+      <p style="font-size:13px;color:var(--dm);margin-bottom:14px">Oeffne OBS, fuege eine Browserquelle hinzu, URL unten reinkopieren.</p>
+      <div class="obs-box"><strong style="font-size:12px;color:var(--dm)">Overlay URL:</strong><code id="obsU">http://localhost:3000/overlay</code></div>
+      <div class="obs-box" style="margin-top:10px;border-color:var(--bd)"><strong style="font-size:12px;color:var(--dm)">Debug:</strong><code id="obsUD">http://localhost:3000/overlay?debug</code></div>
     </div>
     <div class="card">
-      <h3>Verbindungsstatus</h3>
-      <div id="twSt" class="status-grid"><span style="color:var(--dim)">Lade...</span></div>
-    </div>
-    <div class="card">
-      <h3>Twitch Chat aktivieren (optional)</h3>
-      <p style="font-size:13px;color:var(--dim);margin-bottom:12px">
-        Damit Chat-Commands im Twitch-Chat funktionieren, brauchst du einen Bot-Token.
-        Der Server laeuft auch ohne Twitch &ndash; teste Sounds ueber den <strong>Test</strong> Button.
-      </p>
-      <div style="font-size:12px;color:var(--dim);background:var(--bg);padding:14px;border-radius:var(--r);line-height:2">
-        <strong>1.</strong> Bot-Token erstellen: <a href="https://twitchapps.com/tmi/" target="_blank" style="color:var(--accent)">twitchapps.com/tmi</a><br>
-        <strong>2.</strong> In <code>.env</code> eintragen:<br>
-        &nbsp;&nbsp;TWITCH_CHANNEL=dein_kanalname<br>
-        &nbsp;&nbsp;TWITCH_BOT_TOKEN=oauth:dein_token<br>
-        <strong>3.</strong> Server restarten (start.bat neu oeffnen)
-      </div>
+      <h3>Status</h3>
+      <div id="stGen" class="sg"><span style="color:var(--dm)">Lade...</span></div>
     </div>
   </div>
 </div>
@@ -234,20 +254,103 @@
 
 <script>
 const A='';
-let sounds=[], videos=[], allFiles=[], config={chat_commands:{},settings:{}};
+let sounds=[],videos=[],allFiles=[],config={chat_commands:{},settings:{}};
 
 document.querySelectorAll('.tab').forEach(t=>{
-  t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));document.querySelectorAll('.tc').forEach(x=>x.classList.remove('on'));t.classList.add('on');document.getElementById('t-'+t.dataset.t).classList.add('on');}
+  t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.tc').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    document.getElementById('t-'+t.dataset.t).classList.add('on');
+  };
 });
 
-async function init(){await Promise.all([loadMedia(),loadCfg(),loadSt()]);}
+async function init(){await Promise.all([loadCreds(),loadMedia(),loadCfg(),loadSt()]);}
 
+// ---- Password Toggle ----
+function togglePw(id){
+  const el=document.getElementById(id);
+  el.type=el.type==='password'?'text':'password';
+}
+
+// ---- Credentials ----
+async function loadCreds(){
+  try{
+    const d=await(await fetch(A+'/api/credentials')).json();
+    if(d.masked.twitch_channel) document.getElementById('crCh').value=d.masked.twitch_channel;
+    if(d.masked.twitch_bot_token) document.getElementById('crTok').value=d.masked.twitch_bot_token;
+    if(d.masked.twitch_client_id) document.getElementById('crCid').value=d.masked.twitch_client_id;
+    if(d.masked.twitch_client_secret) document.getElementById('crCsec').value=d.masked.twitch_client_secret;
+    await refreshTwitchStatus();
+  }catch(e){}
+}
+
+async function saveCreds(){
+  try{
+    const body={
+      twitch_channel: document.getElementById('crCh').value.trim(),
+      twitch_bot_token: document.getElementById('crTok').value.trim(),
+      twitch_client_id: document.getElementById('crCid').value.trim(),
+      twitch_client_secret: document.getElementById('crCsec').value.trim()
+    };
+    if(!body.twitch_channel)return toast('Kanalname fehlt','err');
+    if(!body.twitch_bot_token)return toast('Bot-Token fehlt','err');
+    const r=await fetch(A+'/api/credentials',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(r.ok)toast('Credentials verschluesselt gespeichert','ok');
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Fehler','err');}
+}
+
+async function startBot(){
+  try{
+    const r=await fetch(A+'/api/twitch/start',{method:'POST'});
+    const d=await r.json();
+    if(r.ok){toast('Soundbot gestartet!','ok');await refreshTwitchStatus();}
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Fehler: '+e.message,'err');}
+}
+
+async function stopBot(){
+  try{
+    const r=await fetch(A+'/api/twitch/stop',{method:'POST'});
+    const d=await r.json();
+    if(r.ok){toast('Soundbot gestoppt','inf');await refreshTwitchStatus();}
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Fehler','err');}
+}
+
+async function refreshTwitchStatus(){
+  try{
+    const d=await(await fetch(A+'/api/twitch/status')).json();
+    const box=document.getElementById('twBox');
+    const label=document.getElementById('twLabel');
+    const sub=document.getElementById('twSub');
+    const startBtn=document.getElementById('twStartBtn');
+    const stopBtn=document.getElementById('twStopBtn');
+    if(d.running){
+      box.className='twitch-box connected';
+      label.textContent='Verbunden';
+      sub.textContent='#'+d.channel;
+      startBtn.style.display='none';
+      stopBtn.style.display='inline-flex';
+    }else{
+      box.className='twitch-box disconnected';
+      label.textContent='Getrennt';
+      sub.textContent=d.channel?'Kanal: '+d.channel+' — Bot starten':'Daten eintragen und Bot starten';
+      startBtn.style.display='inline-flex';
+      stopBtn.style.display='none';
+    }
+  }catch(e){}
+}
+
+// ---- Media ----
 async function loadMedia(){
   try{
     const[s,v]=await Promise.all([fetch(A+'/api/sounds'),fetch(A+'/api/videos')]);
-    sounds=await s.json(); videos=await v.json();
+    sounds=await s.json();videos=await v.json();
     allFiles=[...sounds.map(f=>({...f,type:'sound'})),...videos.map(f=>({...f,type:'video'}))];
-    renderFiles(); updateSelects();
+    renderFiles();updateSelects();
   }catch(e){toast('Fehler beim Laden','err');}
 }
 
@@ -264,18 +367,12 @@ function fc(f,type){
   const sz=(f.size/1024).toFixed(0)+' KB';
   const cmds=findCmds(f.name);
   const tags=cmds.map(c=>`<span class="tag">${c}</span>`).join('');
-  return`<div class="fcard"><div class="fn" title="${f.name}">${f.originalName||f.name}</div><div class="fm">${sz}</div>${tags}<div class="acts"><button class="btn bs sm" onclick="preview('${f.path}','${type}')">&#9654; Test</button><button class="btn bg sm" onclick="testTrigger('${f.name}','${type}')">&#128268; Trigger</button><button class="btn bd sm ico" onclick="delFile('${type}','${f.name}')" title="Loeschen">&#10005;</button></div></div>`;
+  return`<div class="fcard"><div class="fn" title="${f.name}">${f.originalName||f.name}</div><div class="fm">${sz}</div>${tags}<div class="acts"><button class="btn bs sm" onclick="preview('${f.path}','${type}')">&#9654; Test</button><button class="btn bg sm" onclick="testTrigger('${f.name}','${type}')">&#128268; Trigger</button><button class="btn bd sm bi" onclick="delFile('${type}','${f.name}')" title="Loeschen">&#10005;</button></div></div>`;
 }
 
-function findCmds(fn){
-  const r=[];
-  for(const[k,v]of Object.entries(config.chat_commands||{}))if(v.file===fn)r.push(k);
-  return r;
-}
+function findCmds(fn){const r=[];for(const[k,v]of Object.entries(config.chat_commands||{}))if(v.file===fn)r.push(k);return r;}
 
-// Upload
-const upZone=document.getElementById('upZone');
-const fIn=document.getElementById('fIn');
+const upZone=document.getElementById('upZone'),fIn=document.getElementById('fIn');
 upZone.onclick=()=>fIn.click();
 upZone.ondragover=e=>{e.preventDefault();upZone.classList.add('drag');};
 upZone.ondragleave=()=>upZone.classList.remove('drag');
@@ -283,72 +380,36 @@ upZone.ondrop=e=>{e.preventDefault();upZone.classList.remove('drag');uploadF(e.d
 fIn.onchange=()=>{if(fIn.files.length)uploadF(fIn.files);fIn.value='';};
 
 async function uploadF(files){
-  const fd=new FormData();
-  for(const f of files)fd.append('files',f);
-  try{
-    const r=await fetch(A+'/api/upload',{method:'POST',body:fd});
-    const d=await r.json();
-    if(r.ok){toast(`${d.uploaded.length} Datei(en) hochgeladen`,'ok');await loadMedia();}
-    else toast(d.error||'Fehler','err');
-  }catch(e){toast('Upload-Fehler','err');}
+  const fd=new FormData();for(const f of files)fd.append('files',f);
+  try{const r=await fetch(A+'/api/upload',{method:'POST',body:fd});const d=await r.json();if(r.ok){toast(`${d.uploaded.length} hochgeladen`,'ok');await loadMedia();}else toast(d.error,'err');}catch(e){toast('Upload-Fehler','err');}
 }
 
-async function delFile(t,n){
-  if(!confirm('Loeschen?'))return;
-  await fetch(`${A}/api/media/${t}/${encodeURIComponent(n)}`,{method:'DELETE'});
-  toast('Geloescht','ok');await loadMedia();await loadCfg();
-}
+async function delFile(t,n){if(!confirm('Loeschen?'))return;await fetch(`${A}/api/media/${t}/${encodeURIComponent(n)}`,{method:'DELETE'});toast('Geloescht','ok');await loadMedia();await loadCfg();}
 
-function preview(p,t){
-  const a=document.getElementById('prev');
-  if(t==='sound'){a.src=p;a.play().catch(()=>toast('Play-Fehler','err'));}
-}
+function preview(p,t){const a=document.getElementById('prev');if(t==='sound'){a.src=p;a.play().catch(()=>{});}}
 
-// Test Trigger => sendet an Overlay
 async function testTrigger(file,type){
-  try{
-    await fetch(A+'/api/test-trigger',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,type})});
-    toast(`Trigger: ${file}`,'ok');
-  }catch(e){toast('Trigger-Fehler','err');}
+  try{await fetch(A+'/api/test-trigger',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,type})});toast(`Trigger: ${file}`,'ok');}catch(e){toast('Fehler','err');}
 }
 
-// Config
-async function loadCfg(){
-  try{config=await(await fetch(A+'/api/config')).json();renderCmds();applySet();}
-  catch(e){toast('Config-Fehler','err');}
-}
+// ---- Config ----
+async function loadCfg(){try{config=await(await fetch(A+'/api/config')).json();renderCmds();applySet();}catch(e){}}
 
 function renderCmds(){
-  const cmds=config.chat_commands||{};
-  const keys=Object.keys(cmds);
+  const cmds=config.chat_commands||{},keys=Object.keys(cmds);
   document.getElementById('cE').style.display=keys.length?'none':'block';
-  document.getElementById('cL').innerHTML=keys.map(k=>`
-    <li class="citem">
-      <span class="cn">${esc(k)}</span>
-      <span class="cf">${esc(cmds[k].file)}</span>
-      <span class="ct">${cmds[k].type==='video'?'Video':'Sound'}</span>
-      <button class="btn bd sm ico" onclick="delCmd('${esc(k)}')" title="Loeschen">&#10005;</button>
-    </li>`).join('');
+  document.getElementById('cL').innerHTML=keys.map(k=>`<li class="citem"><span class="cn">${esc(k)}</span><span class="cf">${esc(cmds[k].file)}</span><span class="ct">${cmds[k].type==='video'?'Video':'Sound'}</span><button class="btn bd sm bi" onclick="delCmd('${esc(k)}')" title="Loeschen">&#10005;</button></li>`).join('');
 }
 
 async function addCmd(){
-  const name=document.getElementById('cN').value.trim();
-  const file=document.getElementById('cF').value;
+  const name=document.getElementById('cN').value.trim(),file=document.getElementById('cF').value;
   if(!name||!file)return toast('Command und Datei!','err');
   const fi=allFiles.find(f=>f.path===file);
-  try{
-    const r=await fetch(A+'/api/config/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:name,file:fi?fi.name:file,type:fi?fi.type:'sound'})});
-    if(r.ok){toast(`"${name}" hinzugefuegt`,'ok');document.getElementById('cN').value='';await loadCfg();}
-    else{const d=await r.json();toast(d.error||'Fehler','err');}
-  }catch(e){toast('Fehler','err');}
+  try{const r=await fetch(A+'/api/config/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:name,file:fi?fi.name:file,type:fi?fi.type:'sound'})});if(r.ok){toast(`"${name}" hinzugefuegt`,'ok');document.getElementById('cN').value='';await loadCfg();}else{const d=await r.json();toast(d.error,'err');}}catch(e){toast('Fehler','err');}
 }
 
-async function delCmd(c){
-  await fetch(`${A}/api/config/commands/${encodeURIComponent(c)}`,{method:'DELETE'});
-  toast('Geloescht','ok');await loadCfg();
-}
+async function delCmd(c){await fetch(`${A}/api/config/commands/${encodeURIComponent(c)}`,{method:'DELETE'});toast('Geloescht','ok');await loadCfg();}
 
-// Settings
 function applySet(){
   const s=config.settings||{};
   document.getElementById('sPfx').value=s.command_prefix||'!';
@@ -358,22 +419,11 @@ function applySet(){
   document.getElementById('sVV').value=s.video_volume||0.5;
   document.getElementById('rvV').textContent=Math.round((s.video_volume||0.5)*100)+'%';
   document.getElementById('sVD').value=s.video_duration_override_ms||5000;
-  const ov=document.getElementById('sOv');
-  s.allow_overlap?ov.classList.add('on'):ov.classList.remove('on');
+  const ov=document.getElementById('sOv');s.allow_overlap?ov.classList.add('on'):ov.classList.remove('on');
 }
 
 async function saveSet(){
-  try{
-    await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      command_prefix:document.getElementById('sPfx').value||'!',
-      max_queue_size:parseInt(document.getElementById('sQ').value)||10,
-      sound_volume:parseFloat(document.getElementById('sVS').value)||0.8,
-      video_volume:parseFloat(document.getElementById('sVV').value)||0.5,
-      video_duration_override_ms:parseInt(document.getElementById('sVD').value)||5000,
-      allow_overlap:document.getElementById('sOv').classList.contains('on')
-    })});
-    toast('Gespeichert','ok');
-  }catch(e){toast('Fehler','err');}
+  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({command_prefix:document.getElementById('sPfx').value||'!',max_queue_size:parseInt(document.getElementById('sQ').value)||10,sound_volume:parseFloat(document.getElementById('sVS').value)||0.8,video_volume:parseFloat(document.getElementById('sVV').value)||0.5,video_duration_override_ms:parseInt(document.getElementById('sVD').value)||5000,allow_overlap:document.getElementById('sOv').classList.contains('on')})});toast('Gespeichert','ok');}catch(e){toast('Fehler','err');}
 }
 
 function updateSelects(){
@@ -387,20 +437,18 @@ async function loadSt(){
     document.getElementById('verBadge').textContent='v'+d.version;
     document.getElementById('obsU').textContent=`http://localhost:${location.port}/overlay`;
     document.getElementById('obsUD').textContent=`http://localhost:${location.port}/overlay?debug`;
-    document.getElementById('sDot').classList.add('on');
-    document.getElementById('sTxt').textContent='Online';
-    const tw=d.twitch||{};
-    document.getElementById('twSt').innerHTML=`
-      <div class="status-row"><span class="dot ${tw.chatConnected?'on':''}"></span> Twitch Chat: ${tw.chatConnected?'Verbunden (#'+tw.channel+')':'Nicht konfiguriert'}</div>
-      <div class="status-row"><span class="dot on"></span> Server: Online (Uptime ${Math.round(d.uptime/60)}min)</div>
-      <div class="status-row" style="color:var(--dim);margin-top:4px">${d.sounds} Sounds, ${d.videos} Videos, ${d.overlayClients} Overlay-Client(s)</div>`;
-  }catch(e){document.getElementById('sTxt').textContent='Fehler';}
+    document.getElementById('stGen').innerHTML=`
+      <div class="sr"><span class="dot ${d.twitch.running?'on':''}"></span> Twitch Chat: ${d.twitch.running?'Verbunden (#'+d.twitch.channel+')':'Getrennt'}</div>
+      <div class="sr"><span class="dot on"></span> Server: Online (${Math.round(d.uptime/60)}min)</div>
+      <div class="sr" style="color:var(--dm);margin-top:4px">${d.sounds} Sounds, ${d.videos} Videos, ${d.overlayClients} Overlay</div>`;
+    await refreshTwitchStatus();
+  }catch(e){}
 }
 
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function toast(m,t='inf'){const c=document.getElementById('toasts'),e=document.createElement('div');e.className='toast '+t;e.textContent=m;c.appendChild(e);setTimeout(()=>e.remove(),3500);}
 
-init();setInterval(loadSt,10000);
+init();setInterval(()=>{loadSt();refreshTwitchStatus();},10000);
 </script>
 </body>
 </html>

@@ -13,7 +13,7 @@
 # Keys & Secrets
 *_secret*
 *_key*
-*credentials*
+credentials.enc
 
 # Dependencies
 node_modules/

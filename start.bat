@@ -9,11 +9,9 @@ echo ================================================
 echo.
 
 if not exist ".env" (
-    copy ".env.example" ".env" >nul 2>&1
-    echo [OK] .env erstellt.
-    echo.
-    echo  Twitch ist optional - der Server laeuft auch ohne.
-    echo  Bearbeite .env nur wenn du Chat-Commands willst.
+    echo [PORT=3000] > .env
+    echo [WS_PORT=3001] >> .env
+    echo [OK] .env erstellt (nur Ports).
     echo.
 )
 
@@ -31,15 +29,16 @@ if not exist "node_modules" (
 if not exist "sounds" mkdir sounds
 if not exist "videos" mkdir videos
 
-echo [START] Server startet...
+echo [START]
 echo.
-echo   Admin Panel:  http://localhost:3000/admin
-echo   OBS Overlay:  http://localhost:3000/overlay
+echo   Admin:    http://localhost:3000/admin
+echo   Overlay:  http://localhost:3000/overlay
 echo.
+echo ================================================
+echo   Twitch Keys im Admin Panel eingeben!
 echo ================================================
 echo.
 
 node server.js
 
-echo.
 pause

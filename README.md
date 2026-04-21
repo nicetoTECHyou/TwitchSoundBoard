@@ -5,38 +5,41 @@ Lokales Twitch Sound-Alert System mit Web-Admin und OBS Overlay.
 ## Was brauche ich?
 
 - **Nur** Node.js (https://nodejs.org) und OBS Studio
-- **Kein** HTTPS, kein ngrok, kein Cloud-Server
-- Twitch Chat ist **optional**
+- Alles andere wird im Admin Panel eingerichtet
 
 ## Schnellstart
 
 1. `start.bat` doppelklicken
 2. Browser: **http://localhost:3000/admin**
-3. Sound hochladen (Drag & Drop)
-4. Command anlegen: `!airhorn` → Sound waehlen → fertig
+3. **Twitch Tab**: Daten eingeben, **Soundbot Starten** klicken
+4. **Sounds Tab**: Upload, Command anlegen
 5. OBS Browserquelle: **http://localhost:3000/overlay**
-6. Im Admin auf **Trigger** klicken um zu testen
 
-## Twitch Chat aktivieren (optional)
+## Twitch einrichten
 
-Wenn Chat-Commands im Twitch-Chat funktionieren sollen:
+Alles passiert im Admin Panel:
 
-1. Bot-Token: https://twitchapps.com/tmi/
-2. `.env` bearbeiten:
-   ```
-   TWITCH_CHANNEL=dein_kanalname
-   TWITCH_BOT_TOKEN=oauth:dein_token
-   ```
-3. Server restarten
+1. **Twitch Tab** oeffnen
+2. Kanalname und Bot-Token eingeben (maskiert!)
+3. **Speichern** klicken (AES-256 verschluesselt)
+4. **Soundbot Starten** klicken
+
+Bot-Token erstellen: https://twitchapps.com/tmi/
+
+## Sicherheit
+
+- Alle Credentials werden mit AES-256 verschluesselt
+- Gespeichert in `credentials.enc` (lokal, wird nie committet)
+- Sensitive Felder sind im UI maskiert
+- Sichtbar-Button zum Pruefen der Eingabe
 
 ## Features
 
-- Drag & Drop Upload (MP3, WAV, OGG, MP4, WebM)
+- Drag & Drop Upload
 - Chat-Command Manager
-- Test/Trigger Button fuer jede Datei
-- Einstellungen (Lautstaerke, Queue, Prefix)
-- OBS Overlay mit Queue-System
-- Twitch Chat Integration (optional)
+- Test/Trigger Button
+- Twitch Start/Stop on-demand
+- OBS Overlay mit Queue
 
 ## URLs
 
@@ -49,8 +52,8 @@ Wenn Chat-Commands im Twitch-Chat funktionieren sollen:
 ## Build
 
 ```bash
-npm run build           # Zip erstellen
-npm run version:bump    # Version + Zip
+npm run build
+npm run version:bump
 ```
 
 ## Lizenz
