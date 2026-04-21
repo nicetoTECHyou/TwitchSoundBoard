@@ -30,33 +30,23 @@
       border-radius: 12px;
     }
 
-    /* Activate Overlay – klickbar, verschwindet nach Aktivierung */
-    #activate-overlay {
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      z-index: 9000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      background: rgba(0,0,0,0.35);
-    }
-    #activate-overlay.activated {
+    /* Kleine Audio-Unlock Meldung – nicht blockierend */
+    #audio-hint {
       display: none;
-      pointer-events: none;
-    }
-    #activate-overlay .btn-box {
-      background: rgba(20,20,30,0.92);
-      border: 1px solid rgba(145,71,255,0.5);
-      border-radius: 12px;
-      padding: 24px 40px;
-      text-align: center;
-      color: #efeff1;
+      position: fixed;
+      bottom: 8px; right: 8px;
+      background: rgba(0,0,0,0.7);
+      color: #adadb8;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font: 12px/1.4 'Segoe UI', sans-serif;
+      cursor: pointer;
+      z-index: 9000;
       pointer-events: auto;
+      user-select: none;
     }
-    #activate-overlay .btn-box .icon { font-size: 36px; margin-bottom: 10px; }
-    #activate-overlay .btn-box .title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-    #activate-overlay .btn-box .hint { font-size: 12px; color: #adadb8; }
+    #audio-hint:hover { color: #efeff1; }
+    #audio-hint.hidden { display: none; }
 
     /* Debug */
     #debug-bar {
@@ -97,79 +87,74 @@
   </style>
 </head>
 <body>
-  <!-- Audio Aktivierung – einmal klicken, dann verschwindet -->
-  <div id="activate-overlay">
-    <div class="btn-box">
-      <div class="icon">&#128266;</div>
-      <div class="title">Klick zum Aktivieren</div>
-      <div class="hint">Audio freischalten (Browser-Autoplay)</div>
-    </div>
-  </div>
-
   <div id="overlay-container">
     <div id="video-container">
       <video id="video-player" playsinline></video>
     </div>
   </div>
+
+  <!-- Kleiner Hinweis statt grosses Overlay -->
+  <div id="audio-hint">&#128263; Klick fuer Audio</div>
+
   <div id="debug-bar"></div>
   <div id="ws-status" class="err">&#11044; Waiting...</div>
 
   <script>
     // =============================================
-    // TwitchSoundBoard – OBS Overlay Client
+    // TwitchSoundBoard – OBS Overlay Client v2
     // =============================================
 
-    const queue = [];
-    let isPlaying = false;
-    let audioUnlocked = false;
-    const MAX_QUEUE = 10;
+    var queue = [];
+    var isPlaying = false;
+    var audioCtx = null;
+    var MAX_QUEUE = 10;
 
-    const videoContainer = document.getElementById('video-container');
-    const videoPlayer = document.getElementById('video-player');
-    const debugBar = document.getElementById('debug-bar');
-    const wsStatus = document.getElementById('ws-status');
-    const activateOverlay = document.getElementById('activate-overlay');
+    var videoContainer = document.getElementById('video-container');
+    var videoPlayer = document.getElementById('video-player');
+    var debugBar = document.getElementById('debug-bar');
+    var wsStatus = document.getElementById('ws-status');
+    var audioHint = document.getElementById('audio-hint');
 
-    const debug = new URLSearchParams(location.search).has('debug');
+    var debug = new URLSearchParams(location.search).has('debug');
     if (debug) { debugBar.style.display = 'block'; wsStatus.style.display = 'block'; }
 
-    // ---- Audio Unlock (Browser Autoplay Policy) ----
-    function unlockAudio() {
-      if (audioUnlocked) return;
-      var ctx;
+    // ---- Audio Unlock ----
+    function tryUnlockAudio() {
+      if (audioCtx && audioCtx.state !== 'closed') return;
       try {
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-      } catch (e) {
-        audioUnlocked = true;
-        return;
-      }
-      if (ctx.state === 'suspended') {
-        ctx.resume().then(function() {
-          ctx.close();
-          audioUnlocked = true;
-          activateOverlay.classList.add('activated');
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) { return; }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().then(function() {
+          audioHint.classList.add('hidden');
           dbg('Audio freigeschaltet');
-        });
+        }).catch(function() {});
       } else {
-        ctx.close();
-        audioUnlocked = true;
-        activateOverlay.classList.add('activated');
+        audioHint.classList.add('hidden');
+        dbg('Audio bereits freigeschaltet');
       }
     }
 
-    // Klick auf Overlay aktiviert Audio
-    activateOverlay.addEventListener('click', unlockAudio);
-    // Auch Klick auf die ganze Seite (falls Overlay versteckt)
-    document.body.addEventListener('click', function() {
-      if (!audioUnlocked) unlockAudio();
-    }, { once: false });
-
-    // Pruefen ob OBS (OBS erlaubt autoplay meistens)
-    if (navigator.userAgent.indexOf('OBS') !== -1 || navigator.userAgent.indexOf('obs') !== -1) {
-      audioUnlocked = true;
-      activateOverlay.classList.add('activated');
-      dbg('OBS erkannt – Audio automatisch freigeschaltet');
+    function isAudioUnlocked() {
+      if (!audioCtx) return false;
+      return audioCtx.state === 'running';
     }
+
+    // OBS User-Agent Check
+    var ua = navigator.userAgent.toLowerCase();
+    if (ua.indexOf('obs') !== -1 || ua.indexOf('streamlabs') !== -1 || ua.indexOf('electron') !== -1) {
+      tryUnlockAudio();
+      if (!isAudioUnlocked()) {
+        // OBS: trotzdem versuchen, Audio ohne Context abzuspielen
+        audioHint.classList.add('hidden');
+      }
+    } else {
+      // Browser: Hinweis anzeigen
+      audioHint.style.display = 'block';
+    }
+
+    audioHint.addEventListener('click', function() { tryUnlockAudio(); });
+    document.body.addEventListener('click', function() { tryUnlockAudio(); });
 
     // ---- WebSocket ----
     function wsUrl() {
@@ -222,50 +207,108 @@
       var max = data.maxQueue || MAX_QUEUE;
       if (queue.length >= max) return dbg('Queue voll (' + max + '), verworfen: ' + data.file);
       queue.push(data);
-      dbg('+ "' + data.file + '" von ' + data.user + ' via ' + data.source + ' [' + queue.length + ']');
+      dbg('+ "' + data.file + '" von ' + data.user + ' via ' + data.source + ' [Queue: ' + queue.length + ']');
       if (!isPlaying) processQueue();
     }
 
     function processQueue() {
-      if (!queue.length) { isPlaying = false; return; }
+      if (!queue.length) {
+        isPlaying = false;
+        dbg('Queue leer');
+        return;
+      }
       isPlaying = true;
       var item = queue.shift();
-      dbg('> "' + item.file + '" (' + item.mediaType + ') [' + queue.length + ']');
-      item.mediaType === 'video' ? playVideo(item) : playSound(item);
+      dbg('> Spielen: "' + item.file + '" (' + item.mediaType + ') [Queue: ' + queue.length + ']');
+      try {
+        item.mediaType === 'video' ? playVideo(item) : playSound(item);
+      } catch (e) {
+        dbg('Fehler bei play: ' + e.message);
+        finished();
+      }
+    }
+
+    // finished() ist die EINZIGE Funktion die next() aufrufen darf
+    // Verhindert Doppelaufrufe von onended + durTimer + onerror
+    function finished() {
+      if (!isPlaying) return;
+      isPlaying = false;
+      setTimeout(processQueue, 150);
     }
 
     // ---- Sound ----
     function playSound(item) {
-      if (!audioUnlocked) {
-        dbg('Audio noch gesperrt – klick auf Overlay!');
-        next();
-        return;
-      }
       var a = new Audio('/media/sounds/' + item.file);
       a.volume = item.volume != null ? item.volume : 0.8;
+      var done = false;
       var durTimer = null;
 
+      function doFinish() {
+        if (done) return;
+        done = true;
+        clearTimeout(durTimer);
+        try { a.pause(); } catch (e) {}
+        a.oncanplaythrough = null;
+        a.onerror = null;
+        a.onended = null;
+        a.src = '';
+        dbg('Sound fertig: "' + item.file + '"');
+        finished();
+      }
+
       a.oncanplaythrough = function() {
-        a.play().catch(function() { next(); });
-        // Per-File Duration Override fuer Sounds
+        if (done) return;
+        a.oncanplaythrough = null;
+        a.play().catch(function(err) {
+          dbg('Play rejected: ' + err.message);
+          doFinish();
+        });
         if (item.durationOverride && item.durationOverride > 0) {
           durTimer = setTimeout(function() {
-            a.pause(); a.currentTime = 0;
-            next();
+            dbg('Sound abgeschnitten nach ' + item.durationOverride + 'ms');
+            doFinish();
           }, item.durationOverride);
         }
       };
-      a.onerror = function() { dbg('Fehlt: /media/sounds/' + item.file); clearTimeout(durTimer); next(); };
-      a.onended = function() { clearTimeout(durTimer); setTimeout(next, 200); };
+
+      a.onerror = function() {
+        dbg('Fehlt: /media/sounds/' + item.file);
+        doFinish();
+      };
+
+      a.onended = function() {
+        doFinish();
+      };
+
+      // Fallback: falls canplaythrough nie feuert
+      a.load();
+      setTimeout(function() {
+        if (!done && a.readyState >= 3) {
+          a.play().catch(function() { doFinish(); });
+          if (item.durationOverride && item.durationOverride > 0 && !durTimer) {
+            durTimer = setTimeout(doFinish, item.durationOverride);
+          }
+        }
+      }, 500);
     }
 
     // ---- Video ----
     function playVideo(item) {
-      if (!audioUnlocked) {
-        dbg('Audio noch gesperrt – klick auf Overlay!');
-        next();
-        return;
+      var done = false;
+      var durTimer = null;
+
+      function doFinish() {
+        if (done) return;
+        done = true;
+        clearTimeout(durTimer);
+        videoPlayer.oncanplaythrough = null;
+        videoPlayer.onerror = null;
+        videoPlayer.onended = null;
+        hideVideo();
+        dbg('Video fertig: "' + item.file + '"');
+        finished();
       }
+
       videoPlayer.src = '/media/videos/' + item.file;
       videoPlayer.volume = item.volume != null ? item.volume : 0.5;
       videoPlayer.currentTime = 0;
@@ -273,19 +316,31 @@
       videoContainer.style.animation = 'fadeIn 0.2s ease-out';
 
       videoPlayer.oncanplaythrough = function() {
-        videoPlayer.play().catch(function() { hideVideo(); next(); });
+        if (done) return;
+        videoPlayer.oncanplaythrough = null;
+        videoPlayer.play().catch(function(err) {
+          dbg('Video play rejected: ' + err.message);
+          doFinish();
+        });
       };
-      videoPlayer.onerror = function() { dbg('Fehlt: /media/videos/' + item.file); hideVideo(); next(); };
-      videoPlayer.onended = function() { hideVideo(); setTimeout(next, 300); };
+
+      videoPlayer.onerror = function() {
+        dbg('Fehlt: /media/videos/' + item.file);
+        doFinish();
+      };
+
+      videoPlayer.onended = function() {
+        doFinish();
+      };
 
       // Duration Override
-      var maxMs = item.durationOverride || 5000;
-      setTimeout(function() {
-        if (!videoPlayer.paused && videoPlayer.readyState >= 2) {
-          videoPlayer.pause(); videoPlayer.currentTime = 0;
-          hideVideo(); next();
-        }
-      }, maxMs);
+      var dur = item.durationOverride || 5000;
+      if (dur > 0) {
+        durTimer = setTimeout(function() {
+          dbg('Video gestoppt nach ' + dur + 'ms');
+          doFinish();
+        }, dur);
+      }
     }
 
     function hideVideo() {
@@ -298,8 +353,6 @@
       }, 300);
     }
 
-    function next() { isPlaying = false; processQueue(); }
-
     function dbg(msg) {
       var line = '[' + new Date().toLocaleTimeString('de-DE') + '] ' + msg;
       console.log(line);
@@ -307,7 +360,7 @@
     }
 
     // ---- Start ----
-    dbg('Overlay geladen');
+    dbg('Overlay geladen – v2');
     connect();
   </script>
 </body>
