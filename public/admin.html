@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TwitchSoundBoard – Admin Panel</title>
+  <style>
+    :root {
+      --bg: #0e0e10;
+      --surface: #18181b;
+      --surface2: #1f1f23;
+      --border: #2f2f35;
+      --text: #efeff1;
+      --text-dim: #adadb8;
+      --accent: #9147ff;
+      --accent-hover: #772ce8;
+      --green: #00b894;
+      --red: #ff4757;
+      --orange: #ffa502;
+      --radius: 8px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', InterRo, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ---- Header ---- */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 { font-size: 18px; font-weight: 600; }
+    .header .version {
+      font-size: 12px;
+      color: var(--text-dim);
+      background: var(--surface2);
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: var(--red);
+    }
+    .status-dot.online { background: var(--green); }
+
+    /* ---- Layout ---- */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      color: var(--text-dim);
+      border-bottom: 2px solid transparent;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ---- Cards ---- */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+    .card h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ---- Upload Zone ---- */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--text-dim);
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(145, 71, 255, 0.05);
+    }
+    .upload-zone .icon { font-size: 36px; margin-bottom: 12px; }
+    .upload-zone p { font-size: 14px; }
+    .upload-zone .hint { font-size: 12px; margin-top: 8px; color: var(--text-dim); }
+
+    /* ---- File Grid ---- */
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .file-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      position: relative;
+    }
+    .file-card .name {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+    .file-card .meta { font-size: 11px; color: var(--text-dim); }
+    .file-card .actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .file-card .tag {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: white;
+      margin-top: 6px;
+    }
+
+    /* ---- Buttons ---- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+    .btn-danger:hover { background: var(--red); color: white; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-icon { padding: 6px; min-width: 32px; justify-content: center; }
+
+    /* ---- Form ---- */
+    .form-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .form-group { flex: 1; }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    select { cursor: pointer; }
+
+    /* ---- Command List ---- */
+    .cmd-list { list-style: none; }
+    .cmd-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      transition: background 0.15s;
+    }
+    .cmd-item:hover { background: var(--border); }
+    .cmd-item .cmd-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--accent);
+      min-width: 120px;
+    }
+    .cmd-item .cmd-file {
+      flex: 1;
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .cmd-item .cmd-type {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--surface);
+      color: var(--text-dim);
+      min-width: 50px;
+      text-align: center;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 30px;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    /* ---- Settings Grid ---- */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .setting-item label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+    .setting-item input[type="range"] {
+      -webkit-appearance: none;
+      height: 6px;
+      background: var(--border);
+      border: none;
+      border-radius: 3px;
+    }
+    .setting-item input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    .setting-item .range-val {
+      font-size: 12px;
+      color: var(--accent);
+      float: right;
+    }
+
+    /* ---- OBS Info Box ---- */
+    .obs-box {
+      background: var(--surface2);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .obs-box code {
+      display: block;
+      background: var(--bg);
+      padding: 10px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-top: 8px;
+      word-break: break-all;
+      user-select: all;
+    }
+
+    /* ---- Toggle Switch ---- */
+    .toggle-wrap { display: flex; align-items: center; gap: 10px; }
+    .toggle {
+      position: relative;
+      width: 40px; height: 22px;
+      background: var(--border);
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle.on { background: var(--accent); }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 16px; height: 16px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle.on::after { transform: translateX(18px); }
+
+    /* ---- Toast ---- */
+    .toast-container {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .toast {
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      color: white;
+      animation: slideIn 0.3s ease;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .toast.success { background: var(--green); }
+    .toast.error { background: var(--red); }
+    .toast.info { background: var(--accent); }
+
+    @keyframes slideIn {
+      from { transform: translateX(100px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 768px) {
+      .settings-grid { grid-template-columns: 1fr; }
+      .container { padding: 16px; }
+      .file-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>TwitchSoundBoard <span class="status-dot" id="statusDot"></span> <span id="statusText" style="font-size:13px;color:var(--text-dim)">Laden...</span></h1>
+    <span class="version" id="versionBadge">v0.0.0</span>
+  </div>
+
+  <!-- Tabs -->
+  <div class="container">
+    <div class="tabs">
+      <div class="tab active" data-tab="sounds">Sounds & Videos</div>
+      <div class="tab" data-tab="commands">Chat-Commands</div>
+      <div class="tab" data-tab="bits">Bits & Rewards</div>
+      <div class="tab" data-tab="settings">Einstellungen</div>
+      <div class="tab" data-tab="obs">OBS Overlay</div>
+    </div>
+
+    <!-- TAB: Sounds & Videos -->
+    <div class="tab-content active" id="tab-sounds">
+      <div class="card">
+        <h3>Upload</h3>
+        <div class="upload-zone" id="uploadZone">
+          <div class="icon">&#128264;</div>
+          <p>Sounds & Videos hierher ziehen oder klicken</p>
+          <div class="hint">MP3, WAV, OGG, MP4, WebM &mdash; max 25 MB pro Datei</div>
+          <input type="file" id="fileInput" multiple accept=".mp3,.wav,.ogg,.mp4,.webm" style="display:none">
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Sounds <span id="soundCount" style="font-weight:400;color:var(--text-dim);font-size:12px"></span></h3>
+        <div class="file-grid" id="soundsGrid"></div>
+        <div class="empty-state" id="soundsEmpty" style="display:none">Noch keine Sounds hochgeladen.</div>
+      </div>
+
+      <div class="card">
+        <h3>Videos <span id="videoCount" style="font-weight:400;color:var(--text-dim);font-size:12px"></span></h3>
+        <div class="file-grid" id="videosGrid"></div>
+        <div class="empty-state" id="videosEmpty" style="display:none">Noch keine Videos hochgeladen.</div>
+      </div>
+    </div>
+
+    <!-- TAB: Chat-Commands -->
+    <div class="tab-content" id="tab-commands">
+      <div class="card">
+        <h3>Neuer Command</h3>
+        <div class="form-row">
+          <div class="form-group" style="max-width:200px">
+            <label>Command</label>
+            <input type="text" id="cmdName" placeholder="!airhorn">
+          </div>
+          <div class="form-group">
+            <label>Sound / Video</label>
+            <select id="cmdFile"></select>
+          </div>
+          <div>
+            <button class="btn btn-primary" onclick="addCommand()">Hinzufuegen</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Verfuegbare Commands</h3>
+        <ul class="cmd-list" id="cmdList"></ul>
+        <div class="empty-state" id="cmdEmpty">Keine Commands definiert.</div>
+      </div>
+    </div>
+
+    <!-- TAB: Bits & Rewards -->
+    <div class="tab-content" id="tab-bits">
+      <div class="card">
+        <h3>Bits-Trigger</h3>
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px">
+          Definiere Schwellenwerte fuer Cheers. z.B. "cheer100" triggert ab 100 Bits.
+        </p>
+        <div class="form-row">
+          <div class="form-group" style="max-width:200px">
+            <label>Key (z.B. cheer100)</label>
+            <input type="text" id="bitsKey" placeholder="cheer100">
+          </div>
+          <div class="form-group">
+            <label>Sound / Video</label>
+            <select id="bitsFile"></select>
+          </div>
+          <div>
+            <button class="btn btn-primary" onclick="addBitsTrigger()">Hinzufuegen</button>
+          </div>
+        </div>
+        <ul class="cmd-list" id="bitsList" style="margin-top:12px"></ul>
+        <div class="empty-state" id="bitsEmpty">Keine Bits-Trigger definiert.</div>
+      </div>
+
+      <div class="card">
+        <h3>Kanalpunkte Rewards</h3>
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px">
+          Verbinde Twitch Custom Rewards mit Sounds. Du findest die Reward-ID in der Twitch Console.
+        </p>
+        <div class="form-row">
+          <div class="form-group" style="max-width:220px">
+            <label>Reward ID</label>
+            <input type="text" id="rewardId" placeholder="abc123def456">
+          </div>
+          <div class="form-group" style="max-width:200px">
+            <label>Label (Name)</label>
+            <input type="text" id="rewardLabel" placeholder="Soundboard">
+          </div>
+          <div class="form-group">
+            <label>Sound / Video</label>
+            <select id="rewardFile"></select>
+          </div>
+          <div>
+            <button class="btn btn-primary" onclick="addReward()">Hinzufuegen</button>
+          </div>
+        </div>
+        <ul class="cmd-list" id="rewardList" style="margin-top:12px"></ul>
+        <div class="empty-state" id="rewardEmpty">Keine Rewards definiert.</div>
+      </div>
+    </div>
+
+    <!-- TAB: Settings -->
+    <div class="tab-content" id="tab-settings">
+      <div class="card">
+        <h3>Allgemein</h3>
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label>Befehls-Praefix</label>
+            <input type="text" id="setPrefix" value="!">
+          </div>
+          <div class="setting-item">
+            <label>Max. Queue-Laenge</label>
+            <input type="number" id="setQueue" min="1" max="50" value="10">
+          </div>
+          <div class="setting-item">
+            <label>Sound-Lautstaerke <span class="range-val" id="volSoundVal">80%</span></label>
+            <input type="range" id="setVolSound" min="0" max="1" step="0.05" value="0.8"
+                   oninput="document.getElementById('volSoundVal').textContent=Math.round(this.value*100)+'%'">
+          </div>
+          <div class="setting-item">
+            <label>Video-Lautstaerke <span class="range-val" id="volVideoVal">50%</span></label>
+            <input type="range" id="setVolVideo" min="0" max="1" step="0.05" value="0.5"
+                   oninput="document.getElementById('volVideoVal').textContent=Math.round(this.value*100)+'%'">
+          </div>
+          <div class="setting-item">
+            <label>Video max. Dauer (ms)</label>
+            <input type="number" id="setVideoDur" min="1000" max="30000" step="500" value="5000">
+          </div>
+          <div class="setting-item">
+            <label style="margin-bottom:8px">Sounds uebereinander abspielen</label>
+            <div class="toggle-wrap">
+              <div class="toggle" id="setOverlap" onclick="this.classList.toggle('on')"></div>
+              <span style="font-size:13px;color:var(--text-dim)">Erlaubt gleichzeitiges Abspielen</span>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:20px">
+          <button class="btn btn-primary" onclick="saveSettings()">Einstellungen speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: OBS Overlay -->
+    <div class="tab-content" id="tab-obs">
+      <div class="card">
+        <h3>OBS Browser-Quelle einrichten</h3>
+        <p style="font-size:13px;color:var(--text-dim);margin-bottom:16px">
+          1. Oeffne OBS Studio<br>
+          2. Fuege eine <strong>Browserquelle</strong> hinzu<br>
+          3. Kopiere die URL unten hinein<br>
+          4. Setze die Breite/Hoehe auf 1920x1080 (oder deinen Stream)
+        </p>
+        <div class="obs-box">
+          <strong style="font-size:12px;color:var(--text-dim)">OBS URL:</strong>
+          <code id="obsUrl">http://localhost:3000/overlay</code>
+        </div>
+        <div class="obs-box" style="margin-top:10px;border-color:var(--border)">
+          <strong style="font-size:12px;color:var(--text-dim)">Debug-URL (mit Statusanzeige):</strong>
+          <code id="obsUrlDebug">http://localhost:3000/overlay?debug</code>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Twitch Status</h3>
+        <div id="twitchStatusContent">
+          <p style="font-size:13px;color:var(--text-dim)">Lade...</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Twitch einrichten</h3>
+        <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
+          Damit Chat-Commands und EventSub funktionieren, trage deine Twitch-Daten in die <strong>.env</strong> Datei ein
+          und restarte den Server.
+        </p>
+        <div style="font-size:12px;color:var(--text-dim);background:var(--bg);padding:14px;border-radius:var(--radius);line-height:1.8">
+          TWITCH_CLIENT_ID=deine_client_id<br>
+          TWITCH_CLIENT_SECRET=dein_client_secret<br>
+          TWITCH_CHANNEL=dein_kanalname<br>
+          TWITCH_BOT_TOKEN=optionaler_bot_token<br>
+          PUBLIC_URL=https://dein-ngrok-url (fuer Bits & Rewards)
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toasts"></div>
+
+  <!-- Audio Preview -->
+  <audio id="previewAudio" style="display:none"></audio>
+
+  <script>
+    // =============================================
+    // TwitchSoundBoard – Admin Panel
+    // =============================================
+
+    const API = '';  // gleiche Domain
+
+    let sounds = [];
+    let videos = [];
+    let allFiles = [];
+    let config = { chat_commands: {}, bits: {}, channel_points: {}, settings: {} };
+
+    // ---- Tabs ----
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    // ---- Init ----
+    async function init() {
+      await Promise.all([loadMedia(), loadConfig(), loadStatus()]);
+    }
+
+    // ---- Media laden ----
+    async function loadMedia() {
+      try {
+        const [sRes, vRes] = await Promise.all([
+          fetch(API + '/api/sounds'), fetch(API + '/api/videos')
+        ]);
+        sounds = await sRes.json();
+        videos = await vRes.json();
+        allFiles = [
+          ...sounds.map(f => ({ ...f, type: 'sound' })),
+          ...videos.map(f => ({ ...f, type: 'video' }))
+        ];
+        renderFiles();
+        updateFileSelects();
+      } catch (e) {
+        toast('Fehler beim Laden der Medien', 'error');
+      }
+    }
+
+    function renderFiles() {
+      const sg = document.getElementById('soundsGrid');
+      const vg = document.getElementById('videosGrid');
+
+      sg.innerHTML = sounds.map(f => fileCardHTML(f, 'sound')).join('');
+      vg.innerHTML = videos.map(f => fileCardHTML(f, 'video')).join('');
+
+      document.getElementById('soundCount').textContent = sounds.length ? `(${sounds.length})` : '';
+      document.getElementById('videoCount').textContent = videos.length ? `(${videos.length})` : '';
+      document.getElementById('soundsEmpty').style.display = sounds.length ? 'none' : 'block';
+      document.getElementById('videosEmpty').style.display = videos.length ? 'none' : 'block';
+    }
+
+    function fileCardHTML(f, type) {
+      const sizeStr = (f.size / 1024).toFixed(0) + ' KB';
+      const cmds = findCommandsForFile(f.name);
+      const cmdTags = cmds.map(c => `<span class="tag">${c}</span>`).join('');
+      return `
+        <div class="file-card">
+          <div class="name" title="${f.name}">${f.originalName || f.name}</div>
+          <div class="meta">${sizeStr} &bull; ${type === 'video' ? 'Video' : 'Sound'}</div>
+          ${cmdTags}
+          <div class="actions">
+            <button class="btn btn-secondary btn-sm" onclick="previewFile('${f.path}', '${type}')">&#9654; Test</button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="deleteFile('${type}', '${f.name}')" title="Loeschen">&#10005;</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function findCommandsForFile(filename) {
+      const cmds = [];
+      for (const [key, val] of Object.entries(config.chat_commands || {})) {
+        if (val.file === filename) cmds.push(key);
+      }
+      return cmds;
+    }
+
+    // ---- Upload ----
+    const uploadZone = document.getElementById('uploadZone');
+    const fileInput = document.getElementById('fileInput');
+
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', (e) => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      uploadFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) uploadFiles(fileInput.files);
+      fileInput.value = '';
+    });
+
+    async function uploadFiles(files) {
+      const fd = new FormData();
+      for (const f of files) fd.append('files', f);
+
+      try {
+        const res = await fetch(API + '/api/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (res.ok) {
+          toast(`${data.uploaded.length} Datei(en) hochgeladen`, 'success');
+          await loadMedia();
+        } else {
+          toast(data.error || 'Upload fehlgeschlagen', 'error');
+        }
+      } catch (e) {
+        toast('Upload-Fehler: ' + e.message, 'error');
+      }
+    }
+
+    // ---- Datei loeschen ----
+    async function deleteFile(type, filename) {
+      if (!confirm('Wirklich loeschen?')) return;
+      try {
+        await fetch(`${API}/api/media/${type}/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+        toast('Geloescht', 'success');
+        await loadMedia();
+        await loadConfig();
+      } catch (e) {
+        toast('Fehler beim Loeschen', 'error');
+      }
+    }
+
+    // ---- Vorschau ----
+    function previewFile(path, type) {
+      const audio = document.getElementById('previewAudio');
+      if (type === 'sound') {
+        audio.src = path;
+        audio.play().catch(() => toast('Abspielen fehlgeschlagen', 'error'));
+      }
+    }
+
+    // ---- Config ----
+    async function loadConfig() {
+      try {
+        const res = await fetch(API + '/api/config');
+        config = await res.json();
+        renderCommands();
+        renderBits();
+        renderRewards();
+        applySettings();
+      } catch (e) {
+        toast('Config-Ladefehler', 'error');
+      }
+    }
+
+    // ---- Commands ----
+    function renderCommands() {
+      const list = document.getElementById('cmdList');
+      const cmds = config.chat_commands || {};
+      const keys = Object.keys(cmds);
+      document.getElementById('cmdEmpty').style.display = keys.length ? 'none' : 'block';
+      list.innerHTML = keys.map(k => `
+        <li class="cmd-item">
+          <span class="cmd-name">${esc(k)}</span>
+          <span class="cmd-file">${esc(cmds[k].file)}</span>
+          <span class="cmd-type">${cmds[k].type === 'video' ? 'Video' : 'Sound'}</span>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCommand('${esc(k)}')" title="Loeschen">&#10005;</button>
+        </li>
+      `).join('');
+    }
+
+    async function addCommand() {
+      const name = document.getElementById('cmdName').value.trim();
+      const file = document.getElementById('cmdFile').value;
+      if (!name || !file) return toast('Command und Datei auswaehlen!', 'error');
+
+      const fileInfo = allFiles.find(f => f.path === file);
+      const type = fileInfo ? fileInfo.type : 'sound';
+
+      try {
+        const res = await fetch(API + '/api/config/commands', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: name, file: fileInfo ? fileInfo.name : file, type })
+        });
+        if (res.ok) {
+          toast(`Command "${name}" hinzugefuegt`, 'success');
+          document.getElementById('cmdName').value = '';
+          await loadConfig();
+        } else {
+          const d = await res.json();
+          toast(d.error || 'Fehler', 'error');
+        }
+      } catch (e) { toast('Fehler', 'error'); }
+    }
+
+    async function deleteCommand(cmd) {
+      await fetch(`${API}/api/config/commands/${encodeURIComponent(cmd)}`, { method: 'DELETE' });
+      toast('Command geloescht', 'success');
+      await loadConfig();
+    }
+
+    // ---- Bits ----
+    function renderBits() {
+      const list = document.getElementById('bitsList');
+      const bits = config.bits || {};
+      const keys = Object.keys(bits);
+      document.getElementById('bitsEmpty').style.display = keys.length ? 'none' : 'block';
+      list.innerHTML = keys.map(k => `
+        <li class="cmd-item">
+          <span class="cmd-name">${esc(k)}</span>
+          <span class="cmd-file">${esc(bits[k].file)}</span>
+          <span class="cmd-type">${bits[k].type === 'video' ? 'Video' : 'Sound'}</span>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBits('${esc(k)}')" title="Loeschen">&#10005;</button>
+        </li>
+      `).join('');
+    }
+
+    async function addBitsTrigger() {
+      const key = document.getElementById('bitsKey').value.trim();
+      const file = document.getElementById('bitsFile').value;
+      if (!key || !file) return toast('Key und Datei auswaehlen!', 'error');
+
+      const fileInfo = allFiles.find(f => f.path === file);
+      try {
+        const res = await fetch(API + '/api/config/bits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, file: fileInfo ? fileInfo.name : file, type: fileInfo ? fileInfo.type : 'sound' })
+        });
+        if (res.ok) {
+          toast(`Bits-Trigger "${key}" hinzugefuegt`, 'success');
+          document.getElementById('bitsKey').value = '';
+          await loadConfig();
+        }
+      } catch (e) { toast('Fehler', 'error'); }
+    }
+
+    async function deleteBits(key) {
+      await fetch(`${API}/api/config/bits/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      toast('Bits-Trigger geloescht', 'success');
+      await loadConfig();
+    }
+
+    // ---- Rewards ----
+    function renderRewards() {
+      const list = document.getElementById('rewardList');
+      const rewards = config.channel_points || {};
+      const keys = Object.keys(rewards);
+      document.getElementById('rewardEmpty').style.display = keys.length ? 'none' : 'block';
+      list.innerHTML = keys.map(k => `
+        <li class="cmd-item">
+          <span class="cmd-name">${esc(rewards[k].label || k)}</span>
+          <span class="cmd-file" style="font-size:11px;color:var(--text-dim)">${esc(k.substring(0,12))}...</span>
+          <span class="cmd-file">${esc(rewards[k].file)}</span>
+          <span class="cmd-type">${rewards[k].type === 'video' ? 'Video' : 'Sound'}</span>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteReward('${esc(k)}')" title="Loeschen">&#10005;</button>
+        </li>
+      `).join('');
+    }
+
+    async function addReward() {
+      const rewardId = document.getElementById('rewardId').value.trim();
+      const label = document.getElementById('rewardLabel').value.trim();
+      const file = document.getElementById('rewardFile').value;
+      if (!rewardId || !file) return toast('Reward-ID und Datei auswaehlen!', 'error');
+
+      const fileInfo = allFiles.find(f => f.path === file);
+      try {
+        const res = await fetch(API + '/api/config/rewards', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rewardId, label: label || rewardId, file: fileInfo ? fileInfo.name : file, type: fileInfo ? fileInfo.type : 'sound' })
+        });
+        if (res.ok) {
+          toast('Reward hinzugefuegt', 'success');
+          document.getElementById('rewardId').value = '';
+          document.getElementById('rewardLabel').value = '';
+          await loadConfig();
+        }
+      } catch (e) { toast('Fehler', 'error'); }
+    }
+
+    async function deleteReward(id) {
+      await fetch(`${API}/api/config/rewards/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      toast('Reward geloescht', 'success');
+      await loadConfig();
+    }
+
+    // ---- Settings ----
+    function applySettings() {
+      const s = config.settings || {};
+      document.getElementById('setPrefix').value = s.command_prefix || '!';
+      document.getElementById('setQueue').value = s.max_queue_size || 10;
+      document.getElementById('setVolSound').value = s.sound_volume || 0.8;
+      document.getElementById('volSoundVal').textContent = Math.round((s.sound_volume || 0.8) * 100) + '%';
+      document.getElementById('setVolVideo').value = s.video_volume || 0.5;
+      document.getElementById('volVideoVal').textContent = Math.round((s.video_volume || 0.5) * 100) + '%';
+      document.getElementById('setVideoDur').value = s.video_duration_override_ms || 5000;
+      const overlap = document.getElementById('setOverlap');
+      if (s.allow_overlap) overlap.classList.add('on');
+      else overlap.classList.remove('on');
+    }
+
+    async function saveSettings() {
+      const settings = {
+        command_prefix: document.getElementById('setPrefix').value || '!',
+        max_queue_size: parseInt(document.getElementById('setQueue').value) || 10,
+        sound_volume: parseFloat(document.getElementById('setVolSound').value) || 0.8,
+        video_volume: parseFloat(document.getElementById('setVolVideo').value) || 0.5,
+        video_duration_override_ms: parseInt(document.getElementById('setVideoDur').value) || 5000,
+        allow_overlap: document.getElementById('setOverlap').classList.contains('on')
+      };
+      try {
+        await fetch(API + '/api/config/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(settings)
+        });
+        toast('Einstellungen gespeichert', 'success');
+      } catch (e) { toast('Fehler', 'error'); }
+    }
+
+    // ---- File Selects fuellen ----
+    function updateFileSelects() {
+      const options = '<option value="">-- Datei auswaehlen --</option>' +
+        allFiles.map(f => `<option value="${f.path}">${f.originalName || f.name} (${f.type})</option>`).join('');
+      document.getElementById('cmdFile').innerHTML = options;
+      document.getElementById('bitsFile').innerHTML = options;
+      document.getElementById('rewardFile').innerHTML = options;
+    }
+
+    // ---- Status ----
+    async function loadStatus() {
+      try {
+        const res = await fetch(API + '/api/health');
+        const data = await res.json();
+        document.getElementById('versionBadge').textContent = 'v' + data.version;
+        document.getElementById('obsUrl').textContent = `http://localhost:${window.location.port}/overlay`;
+        document.getElementById('obsUrlDebug').textContent = `http://localhost:${window.location.port}/overlay?debug`;
+
+        const dot = document.getElementById('statusDot');
+        const txt = document.getElementById('statusText');
+        dot.classList.add('online');
+        txt.textContent = 'Online';
+
+        // Twitch Status
+        const ts = data.twitch || {};
+        document.getElementById('twitchStatusContent').innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+            <div><span class="status-dot ${ts.connected ? 'online' : ''}"></span> Twitch API: ${ts.connected ? 'Verbunden' : 'Nicht konfiguriert'}</div>
+            <div><span class="status-dot ${ts.chatConnected ? 'online' : ''}"></span> Chat: ${ts.chatConnected ? 'Verbunden' : 'Getrennt'}</div>
+            <div><span class="status-dot ${ts.eventSub ? 'online' : ''}"></span> EventSub (Bits/Rewards): ${ts.eventSub ? 'Aktiv' : 'Inaktiv'}</div>
+            <div style="margin-top:4px;color:var(--text-dim)">
+              ${data.sounds} Sounds, ${data.videos} Videos, ${data.overlayClients} Overlay-Client(s)
+            </div>
+          </div>
+        `;
+      } catch (e) {
+        document.getElementById('statusText').textContent = 'Verbindungsfehler';
+      }
+    }
+
+    // ---- Helpers ----
+    function esc(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function toast(msg, type = 'info') {
+      const container = document.getElementById('toasts');
+      const el = document.createElement('div');
+      el.className = 'toast ' + type;
+      el.textContent = msg;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 3500);
+    }
+
+    // ---- Start ----
+    init();
+
+    // Auto-Refresh
+    setInterval(() => { loadStatus(); }, 10000);
+  </script>
+</body>
+</html>

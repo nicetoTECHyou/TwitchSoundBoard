@@ -1,133 +1,81 @@
 # TwitchSoundBoard 🔊
 
-Ein Twitch Sound-Alert-System mit OBS-Overlay, inspiriert von Blerp. Spiele Sounds und Videos über Chat-Commands, Bits oder Kanalpunkte ab – direkt im Stream-OVERLAY.
+Twitch Sound-Alert-System mit Web-Admin-Panel und OBS-Overlay. Inspiriert von Blerp.
 
 ## Features
 
-- **Chat-Commands** – Trigger Sounds/Videos per `!command` im Twitch-Chat
-- **Bits** – Automatische Sound-Ausgabe bei Cheers mit stufenbasierter Zuordnung
-- **Kanalpunkte** – Sounds an Custom Rewards binden
-- **Video-Support** – MP4/WebM-Videos als Overlay-Animation abspielen
-- **Queue-System** – Kein Überschneiden von Sounds (konfigurierbar)
-- **WebSocket** – Echtzeit-Kommunikation zwischen Backend und Overlay
-- **Auto-Reconnect** – Overlay reconnectet automatisch bei Verbindungsabbruch
-- **Debug-Modus** – `?debug` im Overlay-URL zeigt Status-Infos
+- **Web Admin Panel** – Sounds/Videos per Drag & Drop hochladen, Commands verwalten
+- **Chat-Commands** – Trigger per `!command` im Twitch-Chat
+- **Bits** – Automatische Sound-Ausgabe bei Cheers (stufenbasiert)
+- **Kanalpunkte** – Custom Rewards mit Sounds verknuepfen
+- **Video-Support** – MP4/WebM als Overlay-Animation
+- **Queue-System** – Kein Ueberschneiden (konfigurierbar)
+- **Ready to Run** – `start.bat` doppelklicken, fertig
+- **Twitch optional** – Admin funktioniert sofort, Twitch laeuft dazu wenn konfiguriert
+
+## Schnellstart
+
+1. `start.bat` doppelklicken (oder `npm start`)
+2. Browser oeffnen: **http://localhost:3000/admin**
+3. Sounds hochladen, Commands anlegen
+4. OBS Browserquelle: **http://localhost:3000/overlay**
+
+**Twitch aktivieren:** `.env` bearbeiten, Client ID/Secret eintragen, Server restarten.
 
 ## Projektstruktur
 
 ```
 TwitchSoundBoard/
-├── server.js          # Backend: Twitch API + WebSocket + EventSub
-├── package.json       # Dependencies & Scripts
-├── config.json        # Sound/Video Zuordnungen & Einstellungen
-├── .env.example       # Vorlage für Twitch-Keys (als .env kopieren)
+├── server.js           # Backend: Express + WebSocket + Twitch API
 ├── public/
-│   └── index.html     # OBS-Overlay (HTML/JS)
-├── sounds/            # Sounddateien (.mp3, .wav, .ogg) hier ablegen
-├── videos/            # Videodateien (.mp4, .webm) hier ablegen
-├── start.bat          # Windows Starter
-├── build.js           # Build-Script (Zip-Erstellung)
-├── VERSION            # Aktuelle Version
-├── CHANGELOG.md       # Versionshistorie
-└── README.md          # Diese Datei
+│   ├── admin.html      # Admin Panel (Web-Interface)
+│   └── overlay.html    # OBS Overlay (Ausgabe)
+├── sounds/             # Sounds (werden per Upload befuellt)
+├── videos/             # Videos (werden per Upload befuellt)
+├── config.json         # Automatisch generiert vom Admin Panel
+├── start.bat           # Windows Starter
+├── build.js            # Zip-Build
+├── VERSION / CHANGELOG / README
+└── .env                # Twitch Credentials (wird nie committet!)
 ```
 
-## Schnellstart
+## Admin Panel (http://localhost:3000/admin)
 
-### 1. Twitch Developer Credentials besorgen
+| Tab | Funktion |
+|-----|----------|
+| Sounds & Videos | Drag & Drop Upload, Vorschau, Loeschen |
+| Chat-Commands | `!airhorn` -> `sound.mp3` zuordnen |
+| Bits & Rewards | Bits-Schwellen, Kanalpunkte-Rewards |
+| Einstellungen | Lautstaerke, Queue, Prefix, Overlap |
+| OBS Overlay | URL kopieren, Twitch-Status |
 
-1. Gehe zu https://dev.twitch.tv/console
-2. Erstelle eine neue Application (Name: `TwitchSoundBoard`)
-3. Setze **OAuth Redirect URL**: `http://localhost:3000`
-4. Kopiere **Client ID** und **Client Secret**
-5. Erstelle einen **Bot-Token** (optional): https://twitchapps.com/tmi/
+## OBS Einrichtung
 
-### 2. Projekt einrichten
+1. Browserquelle hinzufuegen
+2. URL: `http://localhost:3000/overlay`
+3. Groesse: 1920x1080
+4. "Lokale Datei" deaktivieren
 
-```bash
-# 1. Dependencies installieren
-npm install
+## Twitch Credentials
 
-# 2. .env Datei erstellen
-copy .env.example .env
-# Bearbeite .env und trage deine Twitch-Daten ein!
-
-# 3. Sounds ablegen
-# Kopiere deine .mp3/.wav/.ogg Dateien in den /sounds Ordner
-# Kopiere deine .mp4/.webm Dateien in den /videos Ordner
+1. https://dev.twitch.tv/console → App erstellen
+2. `.env` bearbeiten:
 ```
-
-### 3. Config anpassen
-
-Öffne `config.json` und definiere deine Zuordnungen:
-
-```json
-{
-  "chat_commands": {
-    "!airhorn": { "file": "airhorn.mp3", "type": "sound" },
-    "!kekw":    { "file": "kekw.mp4",    "type": "video" }
-  },
-  "bits": {
-    "cheer1":  { "file": "ding.mp3",  "type": "sound" },
-    "cheer100": { "file": "wow.mp3", "type": "sound" }
-  },
-  "channel_points": {
-    "reward_id_hier": { "file": "horn.mp3", "type": "sound" }
-  }
-}
+TWITCH_CLIENT_ID=deine_id
+TWITCH_CLIENT_SECRET=dein_secret
+TWITCH_CHANNEL=dein_kanalname
 ```
+3. Server restarten
 
-### 4. Starten
-
-**Windows:** Doppelklick auf `start.bat`
-
-**Oder manuell:**
-```bash
-npm start
-```
-
-### 5. OBS einrichten
-
-1. Öffne OBS Studio
-2. Füge eine **Browserquelle** hinzu
-3. URL: `http://localhost:3000/index.html`
-4. Breite/Höhe: Deiner Wahl (z.B. 1920×1080)
-5. Hake "Lokale Datei" AB (brauchen wir nicht)
-
-**Debug-Modus:** `http://localhost:3000/index.html?debug`
-
-## EventSub (Bits & Kanalpunkte) aktivieren
-
-Für Bits und Kanalpunkte-Benachrichtigungen brauchst du eine **öffentliche HTTPS-URL** (Twitch sendet Webhooks):
-
-```bash
-# ngrok installieren und starten
-ngrok http 3000
-```
-
-Kopiere die ngrok-URL in `.env` als `PUBLIC_URL`.
-
-## Konfiguration (config.json)
-
-| Feld | Beschreibung |
-|------|-------------|
-| `chat_commands` | Chat-Befehle → Sound/Video Zuordnung |
-| `bits` | Cheer-Schwellen → Sound/Video Zuordnung |
-| `channel_points` | Reward-ID → Sound/Video Zuordnung |
-| `settings.allow_overlap` | true = Sounds überschneiden sich |
-| `settings.max_queue_size` | Maximale Queue-Länge (Standard: 10) |
-| `settings.sound_volume` | Lautstärke für Sounds (0.0 – 1.0) |
-| `settings.video_volume` | Lautstärke für Videos (0.0 – 1.0) |
-| `settings.command_prefix` | Befehlspräfix (Standard: `!`) |
-| `settings.video_duration_override_ms` | Max. Videodauer in ms |
+**Bits & Rewards** brauchen zusaetzlich `PUBLIC_URL` (z.B. ngrok).
 
 ## Build
 
 ```bash
-npm run build          # Erstellt TwitchSoundBoard-v0.0.1.zip
-npm run version:bump   # Bumped Version und erstellt Zip
+npm run build           # Erstellt Zip
+npm run version:bump    # Version hochzaehlen + Zip
 ```
 
 ## Lizenz
 
-MIT – frei verwendbar.
+MIT

@@ -1,7 +1,6 @@
 // =============================================
-// TwitchSoundBoard – Server (Backend)
-// Version: 0.0.1
-// Twurple v8 API
+// TwitchSoundBoard – Server (Backend) v0.0.2
+// Admin-Interface + Upload + Twitch EventSub
 // =============================================
 
 require('dotenv').config();
@@ -10,82 +9,304 @@ const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
 const fs = require('fs');
+const multer = require('multer');
 
-// ---- Twurple v8 (Twitch API) ----
-const { ApiClient } = require('@twurple/api');
-const { StaticAuthProvider } = require('@twurple/auth');
-const { ChatClient } = require('@twurple/chat');
-const { EventSubMiddleware } = require('@twurple/eventsub-http');
-
-// ---- Konfiguration laden ----
+// ---- Pfade ----
+const SOUNDS_DIR = path.join(__dirname, 'sounds');
+const VIDEOS_DIR = path.join(__dirname, 'videos');
 const CONFIG_PATH = path.join(__dirname, 'config.json');
-let config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+const DATA_PATH = path.join(__dirname, 'data.json');
 
-function reloadConfig() {
+// Ordner sicherstellen
+[SOUNDS_DIR, VIDEOS_DIR].forEach(dir => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+});
+
+// ---- Multer (File Upload) ----
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const isVideo = /\.(mp4|webm|avi|mov)$/i.test(file.originalname);
+    cb(null, isVideo ? VIDEOS_DIR : SOUNDS_DIR);
+  },
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._\-äöüÄÖÜß ]/g, '_');
+    cb(null, Date.now() + '_' + safeName);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25 MB Max
+  fileFilter: (req, file, cb) => {
+    const allowed = /\.(mp3|wav|ogg|mp4|webm|avi|mov)$/i;
+    if (allowed.test(file.originalname)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Ungueltiger Dateityp. Erlaubt: mp3, wav, ogg, mp4, webm'));
+    }
+  }
+});
+
+// ---- Konfiguration ----
+const DEFAULT_CONFIG = {
+  channel_points: {},
+  bits: {},
+  chat_commands: {},
+  settings: {
+    allow_overlap: false,
+    max_queue_size: 10,
+    sound_volume: 0.8,
+    video_volume: 0.5,
+    command_prefix: '!',
+    video_duration_override_ms: 5000,
+    log_to_console: true
+  }
+};
+
+let config = {};
+function loadConfig() {
   try {
     config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-    log('INFO', 'config.json neu geladen');
-  } catch (e) {
-    log('ERROR', `Fehler beim Laden der config.json: ${e.message}`);
+  } catch {
+    config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+    saveConfig();
   }
 }
+function saveConfig() {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+
+loadConfig();
 
 // ---- Logging ----
 function log(level, msg) {
-  const timestamp = new Date().toISOString();
-  const prefix = `[${timestamp}] [${level}]`;
-  console.log(`${prefix} ${msg}`);
+  const ts = new Date().toISOString();
+  console.log(`[${ts}] [${level}] ${msg}`);
 }
 
-// ---- Umgebungsvariablen validieren ----
-const required = ['TWITCH_CLIENT_ID', 'TWITCH_CLIENT_SECRET', 'TWITCH_CHANNEL'];
-for (const key of required) {
-  if (!process.env[key]) {
-    log('ERROR', `Fehlende Umgebungsvariable: ${key}`);
-    log('ERROR', 'Kopiere .env.example als .env und trage deine Daten ein.');
-    process.exit(1);
-  }
-}
-
+// ---- Umgebungsvariablen ----
 const {
+  PORT = 3000,
+  WS_PORT = 3001,
+  ADMIN_PASSWORD,
   TWITCH_CLIENT_ID,
   TWITCH_CLIENT_SECRET,
   TWITCH_CHANNEL,
   TWITCH_BROADCASTER_ID,
   TWITCH_BOT_TOKEN,
-  PORT = 3000,
-  WS_PORT = 3001,
   PUBLIC_URL,
   EVENTSUB_SECRET
 } = process.env;
 
 // =============================================
-// Express Server (Static Files + EventSub)
+// Express Server
 // =============================================
 const app = express();
 const server = http.createServer(app);
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
-// Statische Dateien für das OBS-Overlay
-app.use('/sounds', express.static(path.join(__dirname, 'sounds')));
-app.use('/videos', express.static(path.join(__dirname, 'videos')));
-app.use('/', express.static(path.join(__dirname, 'public')));
+// Statische Dateien
+app.use('/media/sounds', express.static(SOUNDS_DIR));
+app.use('/media/videos', express.static(VIDEOS_DIR));
 
-// Health-Check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime(), version: getVersion() });
+// =============================================
+// API Routes – Media Management
+// =============================================
+
+// Alle Sounds auflisten
+app.get('/api/sounds', (req, res) => {
+  const files = fs.readdirSync(SOUNDS_DIR)
+    .filter(f => /\.(mp3|wav|ogg)$/i.test(f))
+    .map(f => ({ name: f, path: `/media/sounds/${f}`, size: fs.statSync(path.join(SOUNDS_DIR, f)).size }));
+  res.json(files);
 });
 
-// Config-Reload (nur lokal)
-app.post('/api/reload-config', (req, res) => {
-  reloadConfig();
+// Alle Videos auflisten
+app.get('/api/videos', (req, res) => {
+  const files = fs.readdirSync(VIDEOS_DIR)
+    .filter(f => /\.(mp4|webm|avi|mov)$/i.test(f))
+    .map(f => ({ name: f, path: `/media/videos/${f}`, size: fs.statSync(path.join(VIDEOS_DIR, f)).size }));
+  res.json(files);
+});
+
+// Upload (Sound + Video)
+app.post('/api/upload', upload.array('files', 20), (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: 'Keine Dateien empfangen' });
+  }
+  const uploaded = req.files.map(f => ({
+    name: f.filename,
+    originalName: f.originalname,
+    path: f.path.includes('/videos/') ? `/media/videos/${f.filename}` : `/media/sounds/${f.filename}`,
+    type: f.path.includes('/videos/') ? 'video' : 'sound',
+    size: f.size
+  }));
+  log('INFO', `${uploaded.length} Datei(en) hochgeladen`);
+  broadcastToClients({ type: 'media_updated' });
+  res.json({ uploaded });
+});
+
+// Datei loeschen
+app.delete('/api/media/:type/:filename', (req, res) => {
+  const { type, filename } = req.params;
+  const dir = type === 'video' ? VIDEOS_DIR : SOUNDS_DIR;
+  const filePath = path.join(dir, filename);
+
+  if (!filePath.startsWith(dir)) {
+    return res.status(403).json({ error: 'Zugriff verweigert' });
+  }
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Datei nicht gefunden' });
+  }
+
+  fs.unlinkSync(filePath);
+  log('INFO', `Datei geloescht: ${filename}`);
+
+  // Aus Config entfernen
+  removeFromConfig(filename);
+  broadcastToClients({ type: 'media_updated' });
+  res.json({ success: true });
+});
+
+function removeFromConfig(filename) {
+  for (const section of ['chat_commands', 'bits', 'channel_points']) {
+    for (const [key, val] of Object.entries(config[section] || {})) {
+      if (val.file === filename) {
+        delete config[section][key];
+      }
+    }
+  }
+  saveConfig();
+}
+
+// =============================================
+// API Routes – Config Management
+// =============================================
+
+// Config lesen
+app.get('/api/config', (req, res) => {
+  res.json(config);
+});
+
+// Config speichern (komplett)
+app.put('/api/config', (req, res) => {
+  config = req.body;
+  saveConfig();
   broadcastToClients({ type: 'config_reloaded', config });
-  res.json({ status: 'ok' });
+  log('INFO', 'Config aktualisiert');
+  res.json({ success: true });
+});
+
+// Einzelnen Command hinzufuegen/aendern
+app.post('/api/config/commands', (req, res) => {
+  const { command, file, type } = req.body;
+  if (!command || !file || !type) {
+    return res.status(400).json({ error: 'command, file und type erforderlich' });
+  }
+  if (!config.chat_commands) config.chat_commands = {};
+  config.chat_commands[command] = { file, type };
+  saveConfig();
+  broadcastToClients({ type: 'config_reloaded', config });
+  log('INFO', `Command "${command}" -> "${file}" (${type})`);
+  res.json({ success: true });
+});
+
+// Command loeschen
+app.delete('/api/config/commands/:command', (req, res) => {
+  const cmd = decodeURIComponent(req.params.command);
+  if (config.chat_commands && config.chat_commands[cmd]) {
+    delete config.chat_commands[cmd];
+    saveConfig();
+    broadcastToClients({ type: 'config_reloaded', config });
+    log('INFO', `Command "${cmd}" geloescht`);
+  }
+  res.json({ success: true });
+});
+
+// Bits-Trigger hinzufuegen
+app.post('/api/config/bits', (req, res) => {
+  const { key, file, type } = req.body;
+  if (!key || !file || !type) {
+    return res.status(400).json({ error: 'key, file und type erforderlich' });
+  }
+  if (!config.bits) config.bits = {};
+  config.bits[key] = { file, type };
+  saveConfig();
+  broadcastToClients({ type: 'config_reloaded', config });
+  log('INFO', `Bits-Trigger "${key}" -> "${file}"`);
+  res.json({ success: true });
+});
+
+// Bits-Trigger loeschen
+app.delete('/api/config/bits/:key', (req, res) => {
+  const k = decodeURIComponent(req.params.key);
+  if (config.bits && config.bits[k]) {
+    delete config.bits[k];
+    saveConfig();
+    broadcastToClients({ type: 'config_reloaded', config });
+  }
+  res.json({ success: true });
+});
+
+// Channel-Points Reward hinzufuegen
+app.post('/api/config/rewards', (req, res) => {
+  const { rewardId, file, type, label } = req.body;
+  if (!rewardId || !file || !type) {
+    return res.status(400).json({ error: 'rewardId, file und type erforderlich' });
+  }
+  if (!config.channel_points) config.channel_points = {};
+  config.channel_points[rewardId] = { file, type, label: label || rewardId };
+  saveConfig();
+  broadcastToClients({ type: 'config_reloaded', config });
+  log('INFO', `Reward "${label || rewardId}" -> "${file}"`);
+  res.json({ success: true });
+});
+
+// Channel-Points Reward loeschen
+app.delete('/api/config/rewards/:rewardId', (req, res) => {
+  const rid = decodeURIComponent(req.params.rewardId);
+  if (config.channel_points && config.channel_points[rid]) {
+    delete config.channel_points[rid];
+    saveConfig();
+    broadcastToClients({ type: 'config_reloaded', config });
+  }
+  res.json({ success: true });
+});
+
+// Settings aktualisieren
+app.put('/api/config/settings', (req, res) => {
+  config.settings = { ...config.settings, ...req.body };
+  saveConfig();
+  broadcastToClients({ type: 'config_reloaded', config });
+  log('INFO', 'Settings aktualisiert');
+  res.json({ success: true });
 });
 
 // =============================================
-// WebSocket Server (Overlay-Kommunikation)
+// API – Health & Status
+// =============================================
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    version: getVersion(),
+    twitch: {
+      connected: twitchStatus.connected,
+      chatConnected: twitchStatus.chatConnected,
+      channel: TWITCH_CHANNEL || null,
+      eventSub: twitchStatus.eventSubActive
+    },
+    sounds: fs.readdirSync(SOUNDS_DIR).filter(f => /\.(mp3|wav|ogg)$/i.test(f)).length,
+    videos: fs.readdirSync(VIDEOS_DIR).filter(f => /\.(mp4|webm|avi|mov)$/i.test(f)).length,
+    overlayClients: overlayClients.size
+  });
+});
+
+// =============================================
+// WebSocket Server (Overlay)
 // =============================================
 const wss = new WebSocket.Server({ port: parseInt(WS_PORT) });
 const overlayClients = new Set();
@@ -93,210 +314,168 @@ const overlayClients = new Set();
 wss.on('connection', (ws) => {
   log('INFO', `Overlay verbunden (${overlayClients.size + 1} Clients)`);
   overlayClients.add(ws);
-
-  // Sende aktuelle Config beim Connect
   ws.send(JSON.stringify({ type: 'init', config }));
 
   ws.on('close', () => {
     overlayClients.delete(ws);
-    log('INFO', `Overlay getrennt (${overlayClients.size} verbleibend)`);
   });
-
-  ws.on('error', (err) => {
-    log('ERROR', `WebSocket Fehler: ${err.message}`);
-  });
+  ws.on('error', () => {});
 });
 
 function broadcastToClients(data) {
-  const message = JSON.stringify(data);
-  for (const client of overlayClients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
+  const msg = JSON.stringify(data);
+  for (const c of overlayClients) {
+    if (c.readyState === WebSocket.OPEN) c.send(msg);
   }
 }
 
 function triggerOverlay(file, type, source, user) {
-  const settings = config.settings || {};
-  const volume = type === 'video' ? (settings.video_volume || 0.5) : (settings.sound_volume || 0.8);
-  const allowOverlap = settings.allow_overlap || false;
-  const maxQueue = settings.max_queue_size || 10;
-
-  const payload = {
+  const s = config.settings || {};
+  broadcastToClients({
     type: 'play',
     file,
     mediaType: type,
     source,
     user: user || 'System',
-    volume,
-    allowOverlap,
-    maxQueue,
-    videoDurationOverride: settings.video_duration_override_ms || 5000
-  };
-
+    volume: type === 'video' ? (s.video_volume || 0.5) : (s.sound_volume || 0.8),
+    allowOverlap: s.allow_overlap || false,
+    maxQueue: s.max_queue_size || 10,
+    videoDurationOverride: s.video_duration_override_ms || 5000
+  });
   log('INFO', `Trigger: ${type} "${file}" von ${user} (${source})`);
-  broadcastToClients(payload);
 }
 
 // =============================================
-// Twitch Auth (Twurple v8)
+// Admin-Interface (statische HTML)
 // =============================================
-let broadcasterId = TWITCH_BROADCASTER_ID;
-let apiClient;
-let chatClient;
-let appAccessToken = '';
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// OBS Overlay
+app.get('/overlay', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'overlay.html'));
+});
+
+// Root -> Admin
+app.get('/', (req, res) => {
+  res.redirect('/admin');
+});
+
+// =============================================
+// Twitch Integration (optional!)
+// Server startet OHNE Twitch – Admin funktioniert sofort
+// =============================================
+let twitchStatus = {
+  connected: false,
+  chatConnected: false,
+  eventSubActive: false
+};
 
 async function initTwitch() {
-  try {
-    // App Access Token über Client Credentials Flow holen
-    const tokenResponse = await fetch(
-      `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
-      { method: 'POST' }
-    );
-
-    if (!tokenResponse.ok) {
-      const errBody = await tokenResponse.text();
-      throw new Error(`Token-Anfrage fehlgeschlagen (${tokenResponse.status}): ${errBody}`);
-    }
-
-    const tokenData = await tokenResponse.json();
-    appAccessToken = tokenData.access_token;
-    log('INFO', 'App Access Token erhalten');
-
-    // StaticAuthProvider mit App Access Token
-    const authProvider = new StaticAuthProvider(TWITCH_CLIENT_ID, appAccessToken, [
-      'channel:read:redemptions',
-      'bits:read',
-      'chat:read'
-    ]);
-
-    // API Client erstellen
-    apiClient = new ApiClient({ authProvider });
-
-    // Broadcaster-ID ermitteln falls nicht gesetzt
-    if (!broadcasterId) {
-      const users = await apiClient.users.getUsersByNames([TWITCH_CHANNEL]);
-      if (!users || users.length === 0) {
-        throw new Error(`Kanal "${TWITCH_CHANNEL}" nicht gefunden!`);
-      }
-      broadcasterId = users[0].id;
-      log('INFO', `Broadcaster-ID: ${broadcasterId} (${TWITCH_CHANNEL})`);
-    }
-
-    return authProvider;
-
-  } catch (err) {
-    log('ERROR', `Twitch-Auth fehlgeschlagen: ${err.message}`);
-    log('ERROR', 'Pruefe deine Client ID/Secret in der .env Datei.');
-    process.exit(1);
-  }
-}
-
-// =============================================
-// Twitch Chat (Chat-Commands abhoeren)
-// =============================================
-async function initChat(authProvider) {
-  try {
-    let chatAuthProvider;
-
-    if (TWITCH_BOT_TOKEN) {
-      // Eigenstaendiger Bot-Token
-      chatAuthProvider = new StaticAuthProvider(TWITCH_CLIENT_ID, TWITCH_BOT_TOKEN);
-    } else {
-      // Ohne Bot-Token: App Access Token fuer Lesezugriff
-      chatAuthProvider = authProvider;
-    }
-
-    chatClient = new ChatClient({
-      authProvider: chatAuthProvider,
-      channels: [TWITCH_CHANNEL]
-    });
-
-    chatClient.onMessage((channel, user, text, msg) => {
-      const settings = config.settings || {};
-      const prefix = settings.command_prefix || '!';
-
-      if (text.startsWith(prefix)) {
-        const command = text.toLowerCase().split(' ')[0];
-        const mapping = config.chat_commands || {};
-
-        if (mapping[command]) {
-          triggerOverlay(mapping[command].file, mapping[command].type, 'chat_command', user);
-        }
-      }
-    });
-
-    await chatClient.connect();
-    log('INFO', `Chat verbunden mit #${TWITCH_CHANNEL}`);
-
-  } catch (err) {
-    log('ERROR', `Chat-Verbindung fehlgeschlagen: ${err.message}`);
-    log('WARN', 'Chat-Commands nicht verfuegbar. EventSub funktioniert trotzdem.');
-  }
-}
-
-// =============================================
-// Twitch EventSub (Bits & Kanalpunkte)
-// Twurple v8: EventSubMiddleware
-// =============================================
-async function initEventSub() {
-  if (!PUBLIC_URL) {
-    log('WARN', 'PUBLIC_URL nicht gesetzt - EventSub (Bits & Kanalpunkte) deaktiviert.');
-    log('WARN', 'Setze PUBLIC_URL in .env (z.B. ngrok URL) und restarte.');
+  if (!TWITCH_CLIENT_ID || !TWITCH_CLIENT_SECRET || !TWITCH_CHANNEL) {
+    log('WARN', 'Twitch nicht konfiguriert – Admin-Panel funktioniert ohne Twitch.');
+    log('INFO', 'Trage TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET und TWITCH_CHANNEL in .env ein.');
     return;
   }
 
   try {
-    const eventSubMiddleware = new EventSubMiddleware({
-      apiClient,
-      secret: EVENTSUB_SECRET || 'change-me-set-a-real-secret',
-      hostName: PUBLIC_URL.replace(/\/$/, '')
-    });
+    const { ApiClient } = require('@twurple/api');
+    const { StaticAuthProvider } = require('@twurple/auth');
+    const { ChatClient } = require('@twurple/chat');
 
-    // Middleware an Express anbinden
-    eventSubMiddleware.apply(app);
+    // App Access Token
+    const tokenRes = await fetch(
+      `https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`,
+      { method: 'POST' }
+    );
 
-    // ---- Bits / Cheers ----
-    eventSubMiddleware.subscribeToChannelCheerEvents(broadcasterId, async (event) => {
-      const bitsAmount = event.bits;
-      const mapping = config.bits || {};
+    if (!tokenRes.ok) throw new Error(`Token fehlgeschlagen (${tokenRes.status})`);
+    const tokenData = await tokenRes.json();
 
-      // Beste Match-Schwelle finden (hoechste passende Stufe)
-      let matched = null;
-      const sortedKeys = Object.keys(mapping).sort((a, b) => {
-        const aVal = parseInt(a.replace('cheer', '')) || 0;
-        const bVal = parseInt(b.replace('cheer', '')) || 0;
-        return bVal - aVal; // Absteigend
+    const authProvider = new StaticAuthProvider(TWITCH_CLIENT_ID, tokenData.access_token);
+    const apiClient = new ApiClient({ authProvider });
+
+    // Broadcaster-ID ermitteln
+    let broadcasterId = TWITCH_BROADCASTER_ID;
+    if (!broadcasterId) {
+      const users = await apiClient.users.getUsersByNames([TWITCH_CHANNEL]);
+      if (!users || users.length === 0) throw new Error(`Kanal "${TWITCH_CHANNEL}" nicht gefunden`);
+      broadcasterId = users[0].id;
+    }
+
+    twitchStatus.connected = true;
+    log('INFO', `Twitch verbunden: ${TWITCH_CHANNEL} (${broadcasterId})`);
+
+    // ---- Chat ----
+    try {
+      let chatAuth = TWITCH_BOT_TOKEN
+        ? new StaticAuthProvider(TWITCH_CLIENT_ID, TWITCH_BOT_TOKEN)
+        : authProvider;
+
+      const chatClient = new ChatClient({ authProvider: chatAuth, channels: [TWITCH_CHANNEL] });
+
+      chatClient.onMessage((_ch, user, text) => {
+        const prefix = (config.settings || {}).command_prefix || '!';
+        if (text.startsWith(prefix)) {
+          const cmd = text.toLowerCase().split(' ')[0];
+          const mapping = (config.chat_commands || {});
+          if (mapping[cmd]) {
+            triggerOverlay(mapping[cmd].file, mapping[cmd].type, 'chat_command', user);
+          }
+        }
       });
 
-      for (const key of sortedKeys) {
-        const threshold = parseInt(key.replace('cheer', '')) || 0;
-        if (bitsAmount >= threshold) {
-          matched = mapping[key];
-          break;
-        }
+      await chatClient.connect();
+      twitchStatus.chatConnected = true;
+      log('INFO', `Chat verbunden: #${TWITCH_CHANNEL}`);
+    } catch (e) {
+      log('ERROR', `Chat fehlgeschlagen: ${e.message}`);
+    }
+
+    // ---- EventSub (optional, braucht PUBLIC_URL) ----
+    if (PUBLIC_URL) {
+      try {
+        const { EventSubMiddleware } = require('@twurple/eventsub-http');
+        const es = new EventSubMiddleware({
+          apiClient,
+          secret: EVENTSUB_SECRET || 'change-me-default-secret',
+          hostName: PUBLIC_URL.replace(/\/$/, '')
+        });
+        es.apply(app);
+
+        es.subscribeToChannelCheerEvents(broadcasterId, async (ev) => {
+          const bits = ev.bits;
+          const mapping = config.bits || {};
+          let matched = null;
+          const keys = Object.keys(mapping).sort((a, b) => {
+            return (parseInt(b.replace('cheer', '')) || 0) - (parseInt(a.replace('cheer', '')) || 0);
+          });
+          for (const k of keys) {
+            if (bits >= (parseInt(k.replace('cheer', '')) || 0)) { matched = mapping[k]; break; }
+          }
+          if (matched) triggerOverlay(matched.file, matched.type, `cheer_${bits}bits`, ev.userDisplayName);
+        });
+
+        es.subscribeToChannelRedemptionAddEvents(broadcasterId, async (ev) => {
+          const mapping = config.channel_points || {};
+          if (mapping[ev.rewardId]) {
+            triggerOverlay(mapping[ev.rewardId].file, mapping[ev.rewardId].type, 'channel_points', ev.userDisplayName);
+          }
+        });
+
+        twitchStatus.eventSubActive = true;
+        log('INFO', `EventSub aktiv auf ${PUBLIC_URL}`);
+      } catch (e) {
+        log('ERROR', `EventSub fehlgeschlagen: ${e.message}`);
       }
+    } else {
+      log('WARN', 'EventSub deaktiviert (PUBLIC_URL nicht gesetzt)');
+    }
 
-      if (matched) {
-        triggerOverlay(matched.file, matched.type, `cheer_${bitsAmount}bits`, event.userDisplayName);
-      }
-    });
-
-    // ---- Kanalpunkte Custom Rewards ----
-    eventSubMiddleware.subscribeToChannelRedemptionAddEvents(broadcasterId, async (event) => {
-      const rewardId = event.rewardId;
-      const mapping = config.channel_points || {};
-
-      if (mapping[rewardId]) {
-        triggerOverlay(mapping[rewardId].file, mapping[rewardId].type, 'channel_points', event.userDisplayName);
-      }
-    });
-
-    log('INFO', `EventSub aktiv (Bits + Kanalpunkte) auf ${PUBLIC_URL}`);
-
-  } catch (err) {
-    log('ERROR', `EventSub-Init fehlgeschlagen: ${err.message}`);
-    log('WARN', 'Bits & Kanalpunkte nicht verfuegbar. Chat-Commands funktionieren trotzdem.');
+  } catch (e) {
+    log('ERROR', `Twitch-Init fehlgeschlagen: ${e.message}`);
+    log('WARN', 'Server laeuft trotzdem – Admin-Panel ist verfuegbar.');
   }
 }
 
@@ -304,17 +483,12 @@ async function initEventSub() {
 // Hilfsfunktionen
 // =============================================
 function getVersion() {
-  try {
-    return fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf-8').trim();
-  } catch {
-    return '0.0.0';
-  }
+  try { return fs.readFileSync(path.join(__dirname, 'VERSION'), 'utf-8').trim(); }
+  catch { return '0.0.0'; }
 }
 
-// Graceful Shutdown
 process.on('SIGINT', () => {
-  log('INFO', 'Shutting down...');
-  if (chatClient) chatClient.quit();
+  log('INFO', 'Shutdown...');
   server.close();
   wss.close();
   process.exit(0);
@@ -327,52 +501,26 @@ async function main() {
   console.log('');
   console.log('================================================');
   console.log('  TwitchSoundBoard v' + getVersion());
-  console.log('  Twitch Sound Alert System');
+  console.log('  Sound Alert System + Admin Panel');
   console.log('================================================');
   console.log('');
 
-  // Config pruefen
-  log('INFO', 'Konfiguration geladen');
-  log('INFO', `Kanal: ${TWITCH_CHANNEL}`);
-  log('INFO', `HTTP-Port: ${PORT}`);
-  log('INFO', `WebSocket-Port: ${WS_PORT}`);
-
-  // Sounds- & Videos-Verzeichnis pruefen/erstellen
-  if (!fs.existsSync(path.join(__dirname, 'sounds'))) {
-    fs.mkdirSync(path.join(__dirname, 'sounds'), { recursive: true });
-    log('WARN', 'sounds/ Ordner erstellt - lege Sounddateien (.mp3, .wav, .ogg) dort ab.');
-  }
-
-  if (!fs.existsSync(path.join(__dirname, 'videos'))) {
-    fs.mkdirSync(path.join(__dirname, 'videos'), { recursive: true });
-    log('WARN', 'videos/ Ordner erstellt - lege Videodateien (.mp4, .webm) dort ab.');
-  }
-
-  // Twitch initialisieren (Auth + API)
-  const authProvider = await initTwitch();
-
-  // Twitch Chat starten
-  await initChat(authProvider);
-
-  // EventSub starten (Bits & Kanalpunkte)
-  await initEventSub();
-
-  // HTTP Server starten
   server.listen(PORT, () => {
-    console.log('');
-    console.log('------------------------------------------------');
-    console.log(`  HTTP:     http://localhost:${PORT}`);
-    console.log(`  OBS URL:  http://localhost:${PORT}/index.html`);
-    console.log(`  Debug:    http://localhost:${PORT}/index.html?debug`);
-    console.log(`  WebSocket: ws://localhost:${WS_PORT}`);
-    console.log('------------------------------------------------');
-    log('INFO', 'Bereit - Warte auf Chat-Commands!');
+    console.log('  Admin Panel:    http://localhost:' + PORT + '/admin');
+    console.log('  OBS Overlay:    http://localhost:' + PORT + '/overlay');
+    console.log('  OBS Debug:      http://localhost:' + PORT + '/overlay?debug');
+    console.log('  WebSocket:      ws://localhost:' + WS_PORT);
+    console.log('================================================');
+    log('INFO', 'Server gestartet – Oeffne http://localhost:' + PORT + '/admin');
     console.log('');
   });
+
+  // Twitch asynchron starten (non-blocking!)
+  initTwitch();
 }
 
-main().catch((err) => {
-  log('ERROR', `Fatal: ${err.message}`);
-  console.error(err);
+main().catch(e => {
+  log('ERROR', `Fatal: ${e.message}`);
+  console.error(e);
   process.exit(1);
 });

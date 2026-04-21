@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TwitchSoundBoard – OBS Overlay</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    #overlay-container {
+      position: relative;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+
+    #video-container {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      z-index: 10;
+    }
+    #video-container video {
+      max-width: 100%; max-height: 100%;
+      border-radius: 12px;
+    }
+
+    /* Debug */
+    #debug-bar {
+      display: none;
+      position: fixed;
+      top: 8px; right: 8px;
+      background: rgba(0,0,0,0.75);
+      color: #00ff88;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font: 11px/1.5 monospace;
+      z-index: 999;
+      pointer-events: none;
+      max-width: 320px;
+    }
+
+    #ws-status {
+      display: none;
+      position: fixed;
+      bottom: 8px; left: 8px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font: 11px monospace;
+      z-index: 999;
+      pointer-events: none;
+    }
+    #ws-status.ok { background: rgba(0,180,80,0.3); color: #0f8; }
+    #ws-status.err { background: rgba(200,0,0,0.3); color: #f44; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translate(-50%,-50%) scale(0.85); }
+      to   { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+      to   { opacity: 0; transform: translate(-50%,-50%) scale(1.15); }
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay-container">
+    <div id="video-container">
+      <video id="video-player" playsinline></video>
+    </div>
+  </div>
+  <div id="debug-bar"></div>
+  <div id="ws-status" class="err">&#11044; Waiting...</div>
+
+  <script>
+    // =============================================
+    // TwitchSoundBoard – OBS Overlay Client
+    // =============================================
+
+    const queue = [];
+    let isPlaying = false;
+    const MAX_QUEUE = 10;
+
+    const videoContainer = document.getElementById('video-container');
+    const videoPlayer = document.getElementById('video-player');
+    const debugBar = document.getElementById('debug-bar');
+    const wsStatus = document.getElementById('ws-status');
+
+    const debug = new URLSearchParams(location.search).has('debug');
+    if (debug) { debugBar.style.display = 'block'; wsStatus.style.display = 'block'; }
+
+    // ---- WebSocket ----
+    function wsUrl() {
+      const port = parseInt(location.port) || 3000;
+      return `ws://${location.hostname}:${port + 1}`;
+    }
+
+    let ws, reconnects = 0;
+
+    function connect() {
+      dbg(`Verbinde: ${wsUrl()}`);
+      ws = new WebSocket(wsUrl());
+
+      ws.onopen = () => {
+        reconnects = 0;
+        wsStatus.className = 'ok';
+        wsStatus.textContent = '\u25CF Connected';
+        dbg('Verbunden');
+      };
+
+      ws.onmessage = (e) => {
+        try { handle(JSON.parse(e.data)); }
+        catch (err) { dbg('Parse-Fehler: ' + err.message); }
+      };
+
+      ws.onclose = () => {
+        wsStatus.className = 'err';
+        wsStatus.textContent = '\u25CF Disconnected';
+        reconnect();
+      };
+
+      ws.onerror = () => ws.close();
+    }
+
+    function reconnect() {
+      if (reconnects >= 60) return dbg('Max Reconnects erreicht');
+      reconnects++;
+      const ms = Math.min(1000 * Math.pow(1.4, reconnects - 1), 30000);
+      dbg(`Reconnect in ${Math.round(ms / 1000)}s (#${reconnects})`);
+      setTimeout(connect, ms);
+    }
+
+    function handle(data) {
+      if (data.type === 'play') return enqueue(data);
+      if (data.type === 'init' || data.type === 'config_reloaded') return dbg('Config aktualisiert');
+    }
+
+    // ---- Queue ----
+    function enqueue(data) {
+      const max = data.maxQueue || MAX_QUEUE;
+      if (queue.length >= max) return dbg(`Queue voll (${max}), verworfen: ${data.file}`);
+      queue.push(data);
+      dbg(`+ "${data.file}" von ${data.user} via ${data.source} [${queue.length}]`);
+      if (!isPlaying) processQueue();
+    }
+
+    function processQueue() {
+      if (!queue.length) { isPlaying = false; return; }
+      isPlaying = true;
+      const item = queue.shift();
+      dbg(`> "${item.file}" (${item.mediaType}) [${queue.length}]`);
+      item.mediaType === 'video' ? playVideo(item) : playSound(item);
+    }
+
+    // ---- Sound ----
+    function playSound(item) {
+      const a = new Audio(`/media/sounds/${item.file}`);
+      a.volume = item.volume ?? 0.8;
+
+      a.oncanplaythrough = () => a.play().catch(() => next());
+      a.onerror = () => { dbg(`Fehlt: /media/sounds/${item.file}`); next(); };
+      a.onended = () => setTimeout(next, 200);
+    }
+
+    // ---- Video ----
+    function playVideo(item) {
+      videoPlayer.src = `/media/videos/${item.file}`;
+      videoPlayer.volume = item.volume ?? 0.5;
+      videoPlayer.currentTime = 0;
+      videoContainer.style.display = 'block';
+      videoContainer.style.animation = 'fadeIn 0.2s ease-out';
+
+      videoPlayer.oncanplaythrough = () => videoPlayer.play().catch(() => { hideVideo(); next(); });
+      videoPlayer.onerror = () => { dbg(`Fehlt: /media/videos/${item.file}`); hideVideo(); next(); };
+      videoPlayer.onended = () => { hideVideo(); setTimeout(next, 300); };
+
+      // Fallback max duration
+      const maxMs = (item.videoDurationOverride || 5000) + 500;
+      setTimeout(() => {
+        if (!videoPlayer.paused && videoPlayer.readyState >= 2) {
+          videoPlayer.pause(); videoPlayer.currentTime = 0;
+          hideVideo(); next();
+        }
+      }, maxMs);
+    }
+
+    function hideVideo() {
+      videoContainer.style.animation = 'fadeOut 0.3s ease-in forwards';
+      setTimeout(() => {
+        videoContainer.style.display = 'none';
+        videoPlayer.pause();
+        videoPlayer.removeAttribute('src');
+        videoPlayer.load();
+      }, 300);
+    }
+
+    function next() { isPlaying = false; processQueue(); }
+
+    function dbg(msg) {
+      const line = `[${new Date().toLocaleTimeString('de-DE')}] ${msg}`;
+      console.log(line);
+      if (debug) debugBar.textContent = line;
+    }
+
+    // ---- Start ----
+    dbg('Overlay geladen');
+    connect();
+  </script>
+</body>
+</html>

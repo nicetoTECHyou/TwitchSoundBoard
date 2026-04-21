@@ -3,55 +3,53 @@ chcp 65001 >nul 2>&1
 title TwitchSoundBoard
 
 echo.
-echo ╔══════════════════════════════════════════════╗
-echo ║       TwitchSoundBoard                       ║
-echo ║       Twitch Sound Alert System              ║
-echo ╚══════════════════════════════════════════════╝
+echo ================================================
+echo   TwitchSoundBoard
+echo ================================================
 echo.
 
-:: Prüfe ob .env existiert
+:: .env erzeugen wenn nicht vorhanden
 if not exist ".env" (
-    echo [FEHLER] Keine .env Datei gefunden!
+    echo [SETUP] Erstelle .env aus Vorlage...
+    copy ".env.example" ".env" >nul 2>&1
     echo.
-    echo Bitte kopiere .env.example als .env und trage deine Twitch-Daten ein:
-    echo   copy .env.example .env
+    echo  ! WICHTIG !
+    echo  Bearbeite .env und trage deine Twitch-Daten ein.
+    echo  Der Server startet trotzdem - Twitch-Features sind erst
+    echo  nach Eintrag der Credentials verfuegbar.
     echo.
-    pause
-    exit /b 1
+    echo  Druecke eine beliebige Taste um fortzufahren...
+    pause >nul
 )
 
-:: Prüfe ob node_modules existiert
+:: node_modules installieren wenn noetig
 if not exist "node_modules" (
-    echo [INFO] Dependencies werden installiert...
+    echo [SETUP] Installiere Dependencies...
     call npm install
     if errorlevel 1 (
         echo [FEHLER] npm install fehlgeschlagen!
+        echo Ist Node.js installiert? https://nodejs.org
         pause
         exit /b 1
     )
     echo.
 )
 
-:: Prüfe ob sounds/ und videos/ existieren
+:: Ordner sicherstellen
 if not exist "sounds" mkdir sounds
 if not exist "videos" mkdir videos
 
 :: Server starten
-echo [INFO] Starte TwitchSoundBoard...
+echo [START] Server wird gestartet...
 echo.
-echo ════════════════════════════════════════════════
-echo   OBS Browser-Quelle URL:
-echo   http://localhost:3000/index.html
+echo   Admin Panel: http://localhost:3000/admin
+echo   OBS Overlay: http://localhost:3000/overlay
 echo.
-echo   Debug-Modus:
-echo   http://localhost:3000/index.html?debug
-echo ════════════════════════════════════════════════
+echo ================================================
 echo.
 
 node server.js
 
-if errorlevel 1 (
-    echo.
-    echo [FEHLER] Server wurde beendet mit Fehlercode.
-    pause
-)
+echo.
+echo Server gestoppt.
+pause
