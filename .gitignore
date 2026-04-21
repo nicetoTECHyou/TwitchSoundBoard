@@ -1,0 +1,33 @@
+# =============================================
+# Sensible Dateien – NIEMALS committen!
+# =============================================
+.env
+.env.local
+.env.*.local
+
+# GitHub Token / PAT
+*.pat
+*.token
+.github_token
+
+# Keys & Secrets
+*_secret*
+*_key*
+*credentials*
+
+# Dependencies
+node_modules/
+
+# Build-Artefakte
+download/
+*.zip
+*.tar.gz
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,56 @@
+# =============================================
+# TwitchSoundBoard – Konfiguration
+# =============================================
+
+{
+  "_comment": "Kanalpunkte: Schlüssel = reward_id aus Twitch, Wert = { file, type }",
+  "channel_points": {
+    "example_reward_id_123": {
+      "file": "airhorn.mp3",
+      "type": "sound"
+    }
+  },
+
+  "_comment2": "Bits: Schlüssel = Cheer-Befehl (ohne !), Wert = { file, type }",
+  "bits": {
+    "cheer1": {
+      "file": "ding.mp3",
+      "type": "sound"
+    },
+    "cheer100": {
+      "file": "wow.mp3",
+      "type": "sound"
+    }
+  },
+
+  "_comment3": "Chat-Commands: Schlüssel = Befehl (mit !), Wert = { file, type }",
+  "chat_commands": {
+    "!airhorn": {
+      "file": "airhorn.mp3",
+      "type": "sound"
+    },
+    "!bruh": {
+      "file": "bruh.mp3",
+      "type": "sound"
+    },
+    "!intro": {
+      "file": "intro.mp4",
+      "type": "video"
+    },
+    "!kekw": {
+      "file": "kekw.mp4",
+      "type": "video"
+    }
+  },
+
+  "_comment4": "Globale Einstellungen",
+  "settings": {
+    "allow_overlap": false,
+    "max_queue_size": 10,
+    "sound_volume": 0.8,
+    "video_volume": 0.5,
+    "command_prefix": "!",
+    "video_duration_override_ms": 5000,
+    "log_to_console": true
+  }
+}
