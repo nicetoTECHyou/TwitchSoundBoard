@@ -1,5 +1,5 @@
 // =============================================
-// TwitchSoundBoard – Server v0.0.6
+// TwitchSoundBoard – Server v0.0.7
 // Lokal, kein HTTPS, kein Crash
 // =============================================
 
@@ -289,7 +289,7 @@ app.put('/api/credentials', function(req, res) {
 });
 
 // =============================================
-// API – Twitch Start / Stop
+// API – Twitch Start / Stop (tmi.js)
 // =============================================
 var chatClient = null;
 var twitchRunning = false;
@@ -307,30 +307,55 @@ app.post('/api/twitch/start', function(req, res) {
   if (!creds.twitch_bot_token) return res.status(400).json({ error: 'Bot-Token fehlt' });
 
   try {
-    var StaticAuthProvider = require('@twurple/auth').StaticAuthProvider;
-    var ChatClient = require('@twurple/chat').ChatClient;
+    var tmi = require('tmi.js');
 
-    var authProvider = new StaticAuthProvider(creds.twitch_client_id || 'default', creds.twitch_bot_token);
-    chatClient = new ChatClient({ authProvider: authProvider, channels: [creds.twitch_channel] });
+    // Token bereinigen: "oauth:" Prefix entfernen falls doppelt
+    var token = creds.twitch_bot_token;
+    if (token.indexOf('oauth:oauth:') === 0) token = token.slice(6);
+    if (token.indexOf('oauth:') !== 0) token = 'oauth:' + token;
 
-    chatClient.onMessage(function(ch, user, text) {
+    var opts = {
+      identity: {
+        username: creds.twitch_bot_username || creds.twitch_channel,
+        password: token
+      },
+      channels: [creds.twitch_channel]
+    };
+
+    chatClient = new tmi.Client(opts);
+
+    chatClient.on('connected', function(addr, port) {
+      twitchRunning = true;
+      log('INFO', 'Twitch Chat verbunden: #' + creds.twitch_channel);
+      res.json({ ok: true, channel: creds.twitch_channel });
+    });
+
+    chatClient.on('disconnected', function(reason) {
+      twitchRunning = false;
+      log('WARN', 'Twitch Chat getrennt: ' + reason);
+    });
+
+    chatClient.on('chat', function(channel, userstate, message, self) {
+      if (self) return;
       var prefix = (config.settings || {}).command_prefix || '!';
-      if (text.indexOf(prefix) === 0) {
-        var cmd = text.toLowerCase().split(' ')[0];
+      if (message.indexOf(prefix) === 0) {
+        var cmd = message.toLowerCase().split(' ')[0];
         var mapping = config.chat_commands || {};
         if (mapping[cmd]) {
-          triggerOverlay(mapping[cmd].file, mapping[cmd].type, 'chat', user);
+          triggerOverlay(mapping[cmd].file, mapping[cmd].type, 'chat', userstate['display-name'] || 'Viewer');
         }
       }
     });
 
-    chatClient.connect().then(function() {
-      twitchRunning = true;
-      log('INFO', 'Twitch Chat verbunden: #' + creds.twitch_channel);
-      res.json({ ok: true, channel: creds.twitch_channel });
-    }).catch(function(e) {
-      log('ERROR', 'Twitch Chat: ' + e.message);
-      res.status(500).json({ error: e.message });
+    chatClient.on('error', function(err) {
+      log('ERROR', 'Twitch Chat Fehler: ' + (err.message || JSON.stringify(err)));
+    });
+
+    chatClient.connect().catch(function(e) {
+      log('ERROR', 'Twitch Chat Connect: ' + e.message);
+      if (!twitchRunning) {
+        res.status(500).json({ error: e.message || 'Verbindung fehlgeschlagen' });
+      }
     });
 
   } catch (e) {
@@ -342,10 +367,21 @@ app.post('/api/twitch/start', function(req, res) {
 app.post('/api/twitch/stop', function(req, res) {
   if (!twitchRunning) return res.status(400).json({ error: 'Laeuft nicht' });
   try {
-    if (chatClient) { chatClient.quit(); chatClient = null; }
-    twitchRunning = false;
-    log('INFO', 'Twitch Chat gestoppt');
-    res.json({ ok: true });
+    if (chatClient) {
+      chatClient.disconnect().then(function() {
+        chatClient = null;
+        twitchRunning = false;
+        log('INFO', 'Twitch Chat gestoppt');
+        res.json({ ok: true });
+      }).catch(function(e) {
+        chatClient = null;
+        twitchRunning = false;
+        res.json({ ok: true });
+      });
+    } else {
+      twitchRunning = false;
+      res.json({ ok: true });
+    }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -441,7 +477,7 @@ function getVersion() {
 // Graceful Shutdown
 process.on('SIGINT', function() {
   log('INFO', 'Shutdown...');
-  try { if (chatClient) chatClient.quit(); } catch (e) {}
+  try { if (chatClient) chatClient.disconnect(); } catch (e) {}
   try { server.close(); } catch (e) {}
   try { if (wss) wss.close(); } catch (e) {}
   process.exit(0);

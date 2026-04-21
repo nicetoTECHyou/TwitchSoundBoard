@@ -134,25 +134,12 @@
         </div>
         <div class="cred-row">
           <div class="fg">
-            <label>Bot-Token <a href="https://twitchapps.com/tmi/" target="_blank">(hier erstellen)</a></label>
+            <label>Bot-Token <a href="https://twitchtokengenerator.com/" target="_blank">(hier erstellen)</a></label>
             <input type="password" class="pw" id="crTok" placeholder="oauth:xxxxxxxxxxxx">
           </div>
           <div class="toggle-vis" onclick="togglePw('crTok')" title="Sichtbar machen">&#128065;</div>
         </div>
-        <div class="cred-row">
-          <div class="fg">
-            <label>Client ID <span style="color:var(--dm)">(optional)</span></label>
-            <input type="password" class="pw" id="crCid" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
-          </div>
-          <div class="toggle-vis" onclick="togglePw('crCid')" title="Sichtbar machen">&#128065;</div>
-        </div>
-        <div class="cred-row">
-          <div class="fg">
-            <label>Client Secret <span style="color:var(--dm)">(optional)</span></label>
-            <input type="password" class="pw" id="crCsec" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
-          </div>
-          <div class="toggle-vis" onclick="togglePw('crCsec')" title="Sichtbar machen">&#128065;</div>
-        </div>
+
       </div>
       <div style="margin-top:18px;display:flex;gap:10px;align-items:center">
         <button class="btn bg lg" onclick="saveCreds()">Speichern</button>
@@ -164,7 +151,7 @@
     <div class="card">
       <h3>Anleitung</h3>
       <div style="font-size:13px;color:var(--dm);line-height:1.8">
-        <strong>1.</strong> Bot-Token erstellen: <a href="https://twitchapps.com/tmi/" target="_blank">twitchapps.com/tmi</a> (mit deinem Twitch-Account einloggen)<br>
+        <strong>1.</strong> Bot-Token erstellen: <a href="https://twitchtokengenerator.com/" target="_blank">twitchtokengenerator.com</a> (mit deinem Twitch-Account einloggen)<br>
         <strong>2.</strong> Kanalname eintragen<br>
         <strong>3.</strong> Bot-Token einfuegen<br>
         <strong>4.</strong> <strong>Speichern</strong> klicken (wird verschluesselt auf deinem PC gespeichert)<br>
@@ -279,8 +266,6 @@ async function loadCreds(){
     const d=await(await fetch(A+'/api/credentials')).json();
     if(d.masked.twitch_channel) document.getElementById('crCh').value=d.masked.twitch_channel;
     if(d.masked.twitch_bot_token) document.getElementById('crTok').value=d.masked.twitch_bot_token;
-    if(d.masked.twitch_client_id) document.getElementById('crCid').value=d.masked.twitch_client_id;
-    if(d.masked.twitch_client_secret) document.getElementById('crCsec').value=d.masked.twitch_client_secret;
     await refreshTwitchStatus();
   }catch(e){}
 }
@@ -289,9 +274,7 @@ async function saveCreds(){
   try{
     const body={
       twitch_channel: document.getElementById('crCh').value.trim(),
-      twitch_bot_token: document.getElementById('crTok').value.trim(),
-      twitch_client_id: document.getElementById('crCid').value.trim(),
-      twitch_client_secret: document.getElementById('crCsec').value.trim()
+      twitch_bot_token: document.getElementById('crTok').value.trim()
     };
     if(!body.twitch_channel)return toast('Kanalname fehlt','err');
     if(!body.twitch_bot_token)return toast('Bot-Token fehlt','err');

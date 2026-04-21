@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.7] – 2026-04-21
+
+### Changed
+- **@twurple durch tmi.js ersetzt** – @twurple/chat v8 braucht RefreshingAuthProvider mit Client ID + Secret + Token-Refresh. Fuer einen einfachen Chat-Bot ist das ueberfluessig. tmi.js braucht nur oauth Token + Kanalname.
+- Token-Generator Link auf twitchtokengenerator.com geupdatet
+- Client ID und Client Secret Felder entfernt (werden nicht mehr gebraucht)
+
+### Fixed
+- **Twitch Bot 500 Error** – @twurple wirft \"InvalidTokenTypeError\" bei StaticAuthToken. tmi.js funktioniert direkt mit dem Token.
+
 ## [0.0.6] – 2026-04-21
 
 ### Fixed

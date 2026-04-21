@@ -24,7 +24,7 @@ Alles passiert im Admin Panel:
 3. **Speichern** klicken (AES-256 verschluesselt)
 4. **Soundbot Starten** klicken
 
-Bot-Token erstellen: https://twitchapps.com/tmi/
+Bot-Token erstellen: https://twitchtokengenerator.com/
 
 ## Sicherheit
 
