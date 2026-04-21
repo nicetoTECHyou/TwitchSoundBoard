@@ -18,9 +18,8 @@
 # Dependencies
 node_modules/
 
-# Build-Artefakte
-download/
-*.zip
+# Build-Artefakte (lokale Zips, nicht committen)
+# download/ ist AUF GitHub – fertige Releases landen dort
 *.tar.gz
 
 # OS / Editor
