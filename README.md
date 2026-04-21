@@ -1,79 +1,56 @@
 # TwitchSoundBoard 🔊
 
-Twitch Sound-Alert-System mit Web-Admin-Panel und OBS-Overlay. Inspiriert von Blerp.
+Lokales Twitch Sound-Alert System mit Web-Admin und OBS Overlay.
 
-## Features
+## Was brauche ich?
 
-- **Web Admin Panel** – Sounds/Videos per Drag & Drop hochladen, Commands verwalten
-- **Chat-Commands** – Trigger per `!command` im Twitch-Chat
-- **Bits** – Automatische Sound-Ausgabe bei Cheers (stufenbasiert)
-- **Kanalpunkte** – Custom Rewards mit Sounds verknuepfen
-- **Video-Support** – MP4/WebM als Overlay-Animation
-- **Queue-System** – Kein Ueberschneiden (konfigurierbar)
-- **Ready to Run** – `start.bat` doppelklicken, fertig
-- **Twitch optional** – Admin funktioniert sofort, Twitch laeuft dazu wenn konfiguriert
+- **Nur** Node.js (https://nodejs.org) und OBS Studio
+- **Kein** HTTPS, kein ngrok, kein Cloud-Server
+- Twitch Chat ist **optional**
 
 ## Schnellstart
 
-1. `start.bat` doppelklicken (oder `npm start`)
-2. Browser oeffnen: **http://localhost:3000/admin**
-3. Sounds hochladen, Commands anlegen
-4. OBS Browserquelle: **http://localhost:3000/overlay**
+1. `start.bat` doppelklicken
+2. Browser: **http://localhost:3000/admin**
+3. Sound hochladen (Drag & Drop)
+4. Command anlegen: `!airhorn` → Sound waehlen → fertig
+5. OBS Browserquelle: **http://localhost:3000/overlay**
+6. Im Admin auf **Trigger** klicken um zu testen
 
-**Twitch aktivieren:** `.env` bearbeiten, Client ID/Secret eintragen, Server restarten.
+## Twitch Chat aktivieren (optional)
 
-## Projektstruktur
+Wenn Chat-Commands im Twitch-Chat funktionieren sollen:
 
-```
-TwitchSoundBoard/
-├── server.js           # Backend: Express + WebSocket + Twitch API
-├── public/
-│   ├── admin.html      # Admin Panel (Web-Interface)
-│   └── overlay.html    # OBS Overlay (Ausgabe)
-├── sounds/             # Sounds (werden per Upload befuellt)
-├── videos/             # Videos (werden per Upload befuellt)
-├── config.json         # Automatisch generiert vom Admin Panel
-├── start.bat           # Windows Starter
-├── build.js            # Zip-Build
-├── VERSION / CHANGELOG / README
-└── .env                # Twitch Credentials (wird nie committet!)
-```
-
-## Admin Panel (http://localhost:3000/admin)
-
-| Tab | Funktion |
-|-----|----------|
-| Sounds & Videos | Drag & Drop Upload, Vorschau, Loeschen |
-| Chat-Commands | `!airhorn` -> `sound.mp3` zuordnen |
-| Bits & Rewards | Bits-Schwellen, Kanalpunkte-Rewards |
-| Einstellungen | Lautstaerke, Queue, Prefix, Overlap |
-| OBS Overlay | URL kopieren, Twitch-Status |
-
-## OBS Einrichtung
-
-1. Browserquelle hinzufuegen
-2. URL: `http://localhost:3000/overlay`
-3. Groesse: 1920x1080
-4. "Lokale Datei" deaktivieren
-
-## Twitch Credentials
-
-1. https://dev.twitch.tv/console → App erstellen
+1. Bot-Token: https://twitchapps.com/tmi/
 2. `.env` bearbeiten:
-```
-TWITCH_CLIENT_ID=deine_id
-TWITCH_CLIENT_SECRET=dein_secret
-TWITCH_CHANNEL=dein_kanalname
-```
+   ```
+   TWITCH_CHANNEL=dein_kanalname
+   TWITCH_BOT_TOKEN=oauth:dein_token
+   ```
 3. Server restarten
 
-**Bits & Rewards** brauchen zusaetzlich `PUBLIC_URL` (z.B. ngrok).
+## Features
+
+- Drag & Drop Upload (MP3, WAV, OGG, MP4, WebM)
+- Chat-Command Manager
+- Test/Trigger Button fuer jede Datei
+- Einstellungen (Lautstaerke, Queue, Prefix)
+- OBS Overlay mit Queue-System
+- Twitch Chat Integration (optional)
+
+## URLs
+
+| Was | URL |
+|-----|-----|
+| Admin Panel | http://localhost:3000/admin |
+| OBS Overlay | http://localhost:3000/overlay |
+| Overlay Debug | http://localhost:3000/overlay?debug |
 
 ## Build
 
 ```bash
-npm run build           # Erstellt Zip
-npm run version:bump    # Version hochzaehlen + Zip
+npm run build           # Zip erstellen
+npm run version:bump    # Version + Zip
 ```
 
 ## Lizenz
