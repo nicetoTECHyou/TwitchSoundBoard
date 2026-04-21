@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.2.0] – 2026-04-22
+
+### Added
+- **YouTube Import** – YouTube Video-Link einfuegen, wird als MP4-Video heruntergeladen (mit Audio+Video, kein ffmpeg noetig). Erscheint in der Video-Liste, kann als Chat-Command hinterlegt werden.
+- **Spotify Import** – Spotify Track-Link einfuegen, Track wird automatisch auf YouTube gesucht und als Audio (M4A) heruntergeladen. Erscheint in der Sound-Liste.
+- **Import UI** – Neue Karte im Sounds-Tab: YouTube/Spotify Link eingeben, Import-Button klicken, fertig. Automatisch: Anzeigename = Track-Titel, duration_ms=0 (ganzes Video).
+- **M4A/WebM Unterstuetzung** – Sounds in M4A und WebM Format werden jetzt erkannt und abgespielt.
+- **Upload-Limit auf 50 MB** erhoeht (fuer groessere Video-Uploads).
+
+### Changed
+- Neue Dependency: `@distube/ytdl-core` (YouTube Download, kein ffmpeg noetig)
+- YouTube-Suche via Invidious API mit 4 Instanzen als Fallback (keine extra npm Packages)
+- Spotify Track-Info via oEmbed API (kein Auth noetig)
+- Upload-Zulassung: MP3, WAV, OGG, M4A, MP4, WebM
+
 ## [0.1.0] – 2026-04-22
 
 ### Fixed

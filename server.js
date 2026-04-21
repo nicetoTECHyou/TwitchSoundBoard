@@ -1,5 +1,5 @@
 // =============================================
-// TwitchSoundBoard – Server v0.1.0
+// TwitchSoundBoard – Server v0.2.0
 // Lokal, kein HTTPS, kein Crash
 // =============================================
 
@@ -127,14 +127,175 @@ try {
   });
   upload = multer({
     storage: storage,
-    limits: { fileSize: 25 * 1024 * 1024 },
+    limits: { fileSize: 50 * 1024 * 1024 },
     fileFilter: function(req, file, cb) {
-      /\.(mp3|wav|ogg|mp4|webm|avi|mov)$/i.test(file.originalname)
-        ? cb(null, true) : cb(new Error('Erlaubt: mp3, wav, ogg, mp4, webm'));
+      /\.(mp3|wav|ogg|m4a|mp4|webm|avi|mov)$/i.test(file.originalname)
+        ? cb(null, true) : cb(new Error('Erlaubt: mp3, wav, ogg, m4a, mp4, webm'));
     }
   });
 } catch (e) {
   log('ERROR', 'Multer konnte nicht geladen werden: ' + e.message);
+}
+
+// ---- YouTube/Spotify Import ----
+var ytdl = null;
+try {
+  ytdl = require('@distube/ytdl-core');
+} catch (e) {
+  log('WARN', '@distube/ytdl-core nicht installiert – YouTube/Spotify Import deaktiviert');
+}
+
+function isYtUrl(url) {
+  return /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)[a-zA-Z0-9_-]{6,}/i.test(url);
+}
+
+function isSpotifyUrl(url) {
+  return /spotify\.com\/track\//i.test(url);
+}
+
+function saveStreamToFile(stream, filePath) {
+  return new Promise(function(resolve, reject) {
+    var file = fs.createWriteStream(filePath);
+    stream.pipe(file);
+    file.on('finish', function() {
+      file.close();
+      resolve();
+    });
+    file.on('error', function(err) {
+      try { fs.unlinkSync(filePath); } catch(e) {}
+      reject(err);
+    });
+    stream.on('error', function(err) {
+      try { fs.unlinkSync(filePath); } catch(e) {}
+      reject(err);
+    });
+  });
+}
+
+function searchYouTubeOnInvidious(query) {
+  return new Promise(function(resolve, reject) {
+    var instances = [
+      'https://inv.nadeko.net',
+      'https://vid.puffyan.us',
+      'https://invidious.fdn.fr',
+      'https://yt.artemislena.eu'
+    ];
+
+    function tryInstance(idx) {
+      if (idx >= instances.length) {
+        return reject(new Error('YouTube-Suche fehlgeschlagen – keine Invidious-Instanz erreichbar'));
+      }
+
+      var apiUrl = instances[idx] + '/api/v1/search?q=' + encodeURIComponent(query) + '&type=video&sort_by=relevance';
+
+      require('https').get(apiUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.2.0' } }, function(resp) {
+        if (resp.statusCode !== 200) { resp.resume(); return tryInstance(idx + 1); }
+        var data = '';
+        resp.on('data', function(chunk) { data += chunk; });
+        resp.on('end', function() {
+          try {
+            var results = JSON.parse(data);
+            if (Array.isArray(results) && results.length > 0) {
+              var videos = results.filter(function(r) { return r.type === 'video'; });
+              if (videos.length > 0) return resolve(videos[0]);
+            }
+            tryInstance(idx + 1);
+          } catch (e) { tryInstance(idx + 1); }
+        });
+      }).on('error', function() { tryInstance(idx + 1); }).setTimeout(8000, function() { tryInstance(idx + 1); });
+    }
+
+    tryInstance(0);
+  });
+}
+
+function getSpotifyTrackInfo(url) {
+  return new Promise(function(resolve, reject) {
+    var oembedUrl = 'https://open.spotify.com/oembed?url=' + encodeURIComponent(url);
+    require('https').get(oembedUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.2.0' } }, function(resp) {
+      if (resp.statusCode !== 200) return reject(new Error('Spotify Track nicht gefunden'));
+      var data = '';
+      resp.on('data', function(chunk) { data += chunk; });
+      resp.on('end', function() {
+        try {
+          var json = JSON.parse(data);
+          resolve({ title: json.title || 'Unknown Track' });
+        } catch (e) { reject(new Error('Spotify Antwort unlesbar')); }
+      });
+    }).on('error', function(err) { reject(new Error('Spotify Fehler: ' + err.message)); });
+  });
+}
+
+async function importYouTubeVideo(url) {
+  var info = await ytdl.getInfo(url);
+  var title = info.videoDetails.title;
+  var durationSec = parseInt(info.videoDetails.lengthSeconds) || 0;
+  var videoId = info.videoDetails.videoId;
+
+  var safeName = title.replace(/[^a-zA-Z0-9._\- ]/g, '_').substring(0, 60);
+  var filename = Date.now() + '_YT_' + videoId + '_' + safeName + '.mp4';
+  var filePath = path.join(VIDEOS_DIR, filename);
+
+  // Best combined format (video+audio, no ffmpeg needed)
+  var formats = (info.formats || []).filter(function(f) { return f.hasVideo && f.hasAudio; });
+  var mp4Formats = formats.filter(function(f) { return f.container === 'mp4'; });
+  var format = mp4Formats.length ? mp4Formats[0] : formats[0];
+
+  if (!format) throw new Error('Kein Format mit Audio+Video gefunden');
+
+  log('INFO', 'YT Import Video: "' + title + '" (' + (format.qualityLabel || format.quality) + ')');
+
+  var stream = ytdl(url, { format: format });
+  await saveStreamToFile(stream, filePath);
+
+  if (!config.file_settings) config.file_settings = {};
+  config.file_settings[filename] = { display_name: title, duration_ms: 0 };
+  saveConfig();
+
+  log('INFO', 'YT Video OK: ' + filename + ' (' + Math.round(fs.statSync(filePath).size / 1024) + ' KB)');
+  return {
+    filename: filename, title: title, type: 'video',
+    duration_seconds: durationSec, size: fs.statSync(filePath).size,
+    quality: format.qualityLabel || format.quality
+  };
+}
+
+async function importSpotifyTrack(url) {
+  var trackInfo = await getSpotifyTrackInfo(url);
+  var searchQuery = trackInfo.title + ' official audio';
+
+  log('INFO', 'Spotify Import: Suche "' + searchQuery + '" auf YouTube...');
+
+  var ytVideo = await searchYouTubeOnInvidious(searchQuery);
+  var ytUrl = 'https://www.youtube.com/watch?v=' + ytVideo.videoId;
+  log('INFO', 'Spotify Import: YT Treffer "' + ytVideo.title + '"');
+
+  var info = await ytdl.getInfo(ytUrl);
+  var safeName = trackInfo.title.replace(/[^a-zA-Z0-9._\- ]/g, '_').substring(0, 60);
+
+  var formats = (info.formats || [])
+    .filter(function(f) { return f.hasAudio && !f.hasVideo; })
+    .sort(function(a, b) { return (b.bitrate || 0) - (a.bitrate || 0); });
+
+  if (!formats.length) throw new Error('Kein Audio-Format gefunden');
+
+  var format = formats[0];
+  var ext = format.container || 'm4a';
+  var filename = Date.now() + '_SPOTIFY_' + safeName + '.' + ext;
+  var filePath = path.join(SOUNDS_DIR, filename);
+
+  var stream = ytdl(ytUrl, { format: format });
+  await saveStreamToFile(stream, filePath);
+
+  if (!config.file_settings) config.file_settings = {};
+  config.file_settings[filename] = { display_name: trackInfo.title, duration_ms: null };
+  saveConfig();
+
+  log('INFO', 'Spotify Track OK: ' + filename + ' (' + Math.round(fs.statSync(filePath).size / 1024) + ' KB)');
+  return {
+    filename: filename, title: trackInfo.title, type: 'sound',
+    source: 'spotify', youtube_url: ytUrl, size: fs.statSync(filePath).size
+  };
 }
 
 // ---- Port ----
@@ -162,7 +323,7 @@ app.get('/api/sounds', function(req, res) {
   try {
     var fs_cfg = config.file_settings || {};
     var files = fs.readdirSync(SOUNDS_DIR)
-      .filter(function(f) { return /\.(mp3|wav|ogg)$/i.test(f); })
+      .filter(function(f) { return /\.(mp3|wav|ogg|m4a|webm)$/i.test(f); })
       .map(function(f) {
         var st = fs_cfg[f] || {};
         return { name: f, path: '/media/sounds/' + f, size: fs.statSync(path.join(SOUNDS_DIR, f)).size, duration_ms: st.duration_ms || null, display_name: st.display_name || null };
@@ -290,6 +451,36 @@ app.post('/api/test-trigger', function(req, res) {
   if (!body.file || !body.type) return res.status(400).json({ error: 'file und type noetig' });
   triggerOverlay(body.file, body.type, 'test', 'Admin');
   res.json({ ok: true });
+});
+
+// =============================================
+// API – YouTube / Spotify Import
+// =============================================
+app.post('/api/import', function(req, res) {
+  if (!ytdl) return res.status(503).json({ error: 'YouTube-Import nicht verfuegbar. Bitte npm install ausfuehren.' });
+
+  var url = (req.body.url || '').trim();
+  if (!url) return res.status(400).json({ error: 'URL noetig' });
+
+  if (isYtUrl(url)) {
+    importYouTubeVideo(url).then(function(result) {
+      broadcast({ type: 'config_reloaded', config: config });
+      res.json({ ok: true, 'import': result });
+    }).catch(function(err) {
+      log('ERROR', 'YT Import Error: ' + err.message);
+      res.status(500).json({ error: err.message });
+    });
+  } else if (isSpotifyUrl(url)) {
+    importSpotifyTrack(url).then(function(result) {
+      broadcast({ type: 'config_reloaded', config: config });
+      res.json({ ok: true, 'import': result });
+    }).catch(function(err) {
+      log('ERROR', 'Spotify Import Error: ' + err.message);
+      res.status(500).json({ error: err.message });
+    });
+  } else {
+    res.status(400).json({ error: 'Nur YouTube oder Spotify Track Links unterstuetzt' });
+  }
 });
 
 // =============================================
@@ -429,7 +620,7 @@ app.get('/api/health', function(req, res) {
   var creds = loadCredentials();
   var sndCount = 0, vidCount = 0;
   try {
-    sndCount = fs.readdirSync(SOUNDS_DIR).filter(function(f) { return /\.(mp3|wav|ogg)$/i.test(f); }).length;
+    sndCount = fs.readdirSync(SOUNDS_DIR).filter(function(f) { return /\.(mp3|wav|ogg|m4a|webm)$/i.test(f); }).length;
     vidCount = fs.readdirSync(VIDEOS_DIR).filter(function(f) { return /\.(mp4|webm|avi|mov)$/i.test(f); }).length;
   } catch (e) {}
   res.json({

@@ -173,12 +173,27 @@
   <!-- ====== SOUNDS ====== -->
   <div class="tc" id="t-sounds">
     <div class="card">
+      <h3>YouTube / Spotify Import <span class="sub">Video oder Track per Link importieren</span></h3>
+      <p style="font-size:12px;color:var(--dm);margin-bottom:12px">
+        YouTube Link = <strong style="color:var(--tx)">Video (MP4)</strong> &bull; Spotify Track Link = <strong style="color:var(--tx)">Audio (MP3)</strong>
+      </p>
+      <div class="fr">
+        <div class="fg">
+          <label>YouTube oder Spotify Link</label>
+          <input type="text" id="importUrl" placeholder="https://youtube.com/watch?v=... oder https://open.spotify.com/track/...">
+        </div>
+        <div><button class="btn bp" id="importBtn" onclick="importFromUrl()">Import</button></div>
+      </div>
+      <div id="importStatus" style="display:none;font-size:13px;margin-top:10px;padding:10px 14px;background:var(--sf2);border-radius:var(--r);border:1px solid var(--bd)"></div>
+    </div>
+
+    <div class="card">
       <h3>Upload</h3>
       <div class="upload-zone" id="upZone">
         <div class="ico">&#128264;</div>
         <p>Sounds & Videos hierher ziehen oder klicken</p>
-        <div class="hint">MP3, WAV, OGG, MP4, WebM &mdash; max 25 MB</div>
-        <input type="file" id="fIn" multiple accept=".mp3,.wav,.ogg,.mp4,.webm" style="display:none">
+        <div class="hint">MP3, WAV, OGG, M4A, MP4, WebM &mdash; max 50 MB</div>
+        <input type="file" id="fIn" multiple accept=".mp3,.wav,.ogg,.m4a,.mp4,.webm" style="display:none">
       </div>
     </div>
     <div class="card">
@@ -436,6 +451,37 @@ function preview(p,t){const a=document.getElementById('prev');if(t==='sound'){a.
 
 async function testTrigger(file,type){
   try{await fetch(A+'/api/test-trigger',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file,type})});toast(`Trigger: ${file}`,'ok');}catch(e){toast('Fehler','err');}
+}
+
+async function importFromUrl(){
+  var url=document.getElementById('importUrl').value.trim();
+  if(!url)return toast('Link eingeben!','err');
+  var btn=document.getElementById('importBtn');
+  var st=document.getElementById('importStatus');
+  btn.disabled=true;btn.textContent='Importiere...';
+  st.style.display='block';
+  st.innerHTML='<span style="color:var(--dm)">Download laeuft, bitte warten...</span>';
+  try{
+    var r=await fetch(A+'/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})});
+    var d=await r.json();
+    if(r.ok){
+      var imp=d.import;
+      var lbl=imp.type==='video'?'Video (MP4)':'Audio';
+      var sz=imp.size?Math.round(imp.size/1024)+' KB':'';
+      st.innerHTML='<span style="color:var(--gn)">&#10003; '+esc(imp.title)+'</span> als '+lbl+' importiert'+(sz?' ('+sz+')':'');
+      toast('"'+imp.title+'" importiert!','ok');
+      document.getElementById('importUrl').value='';
+      await loadMedia();await loadCfg();
+    }else{
+      st.innerHTML='<span style="color:var(--rd)">Fehler: '+esc(d.error)+'</span>';
+      toast(d.error,'err');
+    }
+  }catch(e){
+    st.innerHTML='<span style="color:var(--rd)">Verbindungsfehler</span>';
+    toast('Fehler','err');
+  }finally{
+    btn.disabled=false;btn.textContent='Import';
+  }
 }
 
 // ---- Config ----
