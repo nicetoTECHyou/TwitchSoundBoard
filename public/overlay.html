@@ -263,10 +263,12 @@
     function handleSkip() {
       dbg('SKIP angefordert');
       if (!isPlaying) { queue = []; reportQueueState(); return; }
-      // Aktuelles abbrechen und naechstes spielen
       skipCurrent = true;
-      // Cleanup triggern
-      if (typeof currentCleanup === 'function') currentCleanup();
+      if (typeof currentCleanup === 'function') {
+        currentCleanup();
+      } else {
+        finishCurrent();
+      }
     }
 
     function handleClear() {
@@ -279,7 +281,13 @@
     function handleStop() {
       dbg('STOP angefordert (alles)');
       queue = [];
-      if (typeof currentCleanup === 'function') currentCleanup();
+      if (typeof currentCleanup === 'function') {
+        currentCleanup();
+      } else if (isPlaying) {
+        isPlaying = false;
+        currentItem = null;
+        reportQueueState();
+      }
     }
 
     var skipCurrent = false;
@@ -347,9 +355,7 @@
       var safeTimer = null;
 
       function cleanup() {
-        currentCleanup = cleanup;
-        if (done) return;
-        done = true;
+        if (done) return; done = true;
         clearTimeout(durTimer);
         clearTimeout(safeTimer);
 
@@ -366,6 +372,7 @@
         dbg('Embed done: ' + item.videoId);
         finishCurrent();
       }
+      currentCleanup = cleanup;
 
       // Safety-Timeout
       var dur = item.durationOverride;
@@ -423,7 +430,6 @@
       audio.volume = (item.volume != null ? item.volume : 0.8);
 
       function cleanup() {
-        currentCleanup = cleanup;
         if (done) return; done = true;
         clearTimeout(durTimer); clearTimeout(safeTimer);
         try { audio.pause(); } catch(e) {}
@@ -432,6 +438,7 @@
         audio.removeAttribute('src'); audio.load();
         dbg('Sound done: "' + item.file + '"'); finishCurrent();
       }
+      currentCleanup = cleanup;
 
       function attemptPlay() {
         if (done || playStarted) return; playStarted = true;
@@ -467,7 +474,6 @@
       var done = false, playStarted = false, durTimer = null, safeTimer = null;
 
       function cleanup() {
-        currentCleanup = cleanup;
         if (done) return; done = true;
         clearTimeout(durTimer); clearTimeout(safeTimer);
         videoPlayer.oncanplaythrough = null; videoPlayer.onloadeddata = null;
@@ -476,6 +482,7 @@
         hideVideo();
         dbg('Video done: "' + item.file + '"'); finishCurrent();
       }
+      currentCleanup = cleanup;
 
       function attemptPlay() {
         if (done || playStarted) return; playStarted = true;

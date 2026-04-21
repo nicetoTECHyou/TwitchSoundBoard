@@ -1,4 +1,10 @@
 
+## [0.4.4] – 2026-04-22
+
+### Fixed
+- **Queue Stop/Skip/Clear funktioniert nicht** – `currentCleanup` wurde nur innerhalb der cleanup-Funktion selbst zugewiesen. Beim ersten Skip/Stop war `currentCleanup` immer `null`, sodass die Aktion ignoriert wurde. Fix: `currentCleanup = cleanup` wird jetzt direkt nach Definition der Funktion zugewiesen, bevor das Abspielen startet.
+- **Fallback fuer Queue-Stop** – Falls cleanup nicht registriert ist, wird `isPlaying`/`currentItem` jetzt direkt zurueckgesetzt.
+
 ## [0.4.3] – 2026-04-21
 
 ### Changed
