@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0] – 2026-04-22
+
+### Fixed
+- **Video-Laenge Bug** – Ein 3:52 Video wurde nach 5 Sekunden gestoppt. Ursache: `duration_ms || 5000` in JavaScript behandelt `0` als falsy, also wurde immer der Default (5000ms) genommen. Jetzt: `0` = ganzes Video abspielen, leer = globaler Default, Zahl = Cut nach X ms.
+- **Safety-Timeout killt lange Videos** – Safety-Timeout war starr auf 60 Sekunden. Ein 3:52 Video wurde nach 60s hart gekillt. Jetzt: dynamisch berechnet. Mit durationOverride = override + 15s Puffer. Ohne Override = 10 Minuten fuer Videos, 2 Minuten fuer Sounds.
+- **Server sendet falsche durationOverride** – triggerOverlay() behandelte `duration_ms = 0` nicht korrekt. Komplett umgeschrieben: explizite Pruefung auf `undefined`/`null` statt falsy-Check.
+
 ## [0.0.9] – 2026-04-21
 
 ### Fixed

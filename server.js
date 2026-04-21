@@ -1,5 +1,5 @@
 // =============================================
-// TwitchSoundBoard – Server v0.0.9
+// TwitchSoundBoard – Server v0.1.0
 // Lokal, kein HTTPS, kein Crash
 // =============================================
 
@@ -495,7 +495,19 @@ function broadcast(data) {
 function triggerOverlay(file, type, source, user) {
   var s = config.settings || {};
   var fs_cfg = (config.file_settings || {})[file] || {};
-  var dur = fs_cfg.duration_ms || (type === 'video' ? (s.video_duration_override_ms || 5000) : null);
+  var dur;
+  if (type === 'video') {
+    // duration_ms explizit gesetzt? 0 = ganzes Video, >0 = cut nach X ms
+    if (fs_cfg.duration_ms !== undefined && fs_cfg.duration_ms !== null) {
+      dur = fs_cfg.duration_ms;
+    } else {
+      // Nicht pro File gesetzt → globale Video-Default nutzen
+      dur = s.video_duration_override_ms || 5000;
+    }
+  } else {
+    // Sound: duration_ms = cut nach X ms, null/undefined = ganzes Audio
+    dur = (fs_cfg.duration_ms != null && fs_cfg.duration_ms > 0) ? fs_cfg.duration_ms : null;
+  }
   broadcast({
     type: 'play', file: file, mediaType: type, source: source, user: user || 'System',
     volume: type === 'video' ? (s.video_volume || 0.5) : (s.sound_volume || 0.8),

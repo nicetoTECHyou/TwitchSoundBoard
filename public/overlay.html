@@ -106,7 +106,20 @@
     var queue = [];
     var isPlaying = false;
     var MAX_QUEUE = 10;
-    var SAFETY_TIMEOUT_MS = 60000; // Max 60s pro Item – verhindert永久 blockierte Queue
+    // Safety-Timeout: dynamisch berechnet
+    // - Wenn durationOverride > 0: override + 15s Puffer
+    // - Wenn 0/null (ganzes Video): 10 Minuten Max
+    // - Sounds (kein override): 120s
+    function calcSafetyTimeout(item) {
+      if (item.mediaType === 'video') {
+        var dur = item.durationOverride;
+        if (dur && dur > 0) return dur + 15000;
+        return 600000; // 10 Min fuer Videos ohne Limit
+      }
+      var sd = item.durationOverride;
+      if (sd && sd > 0) return sd + 10000;
+      return 120000; // 2 Min fuer Sounds ohne Limit
+    }
     var audioUnlocked = false;
 
     var videoContainer = document.getElementById('video-container');
@@ -336,11 +349,11 @@
         attemptPlay();
       }
 
-      // Sicherheit: Max 60 Sekunden pro Sound
+      // Safety-Timeout: dynamisch, kills nur wenn was echt stecken bleibt
       safeTimer = setTimeout(function() {
-        dbg('SAFETY TIMEOUT: "' + item.file + '"');
+        dbg('SAFETY TIMEOUT (max ' + Math.round(calcSafetyTimeout(item)/1000) + 's): "' + item.file + '"');
         cleanup();
-      }, SAFETY_TIMEOUT_MS);
+      }, calcSafetyTimeout(item));
 
       // Multiple Events fuer Zuverlaessigkeit – {once:true} verhindert Mehrfachfeuer
       audio.addEventListener('canplaythrough', onReady, { once: true });
@@ -432,11 +445,11 @@
         attemptPlay();
       }
 
-      // Sicherheit: Max 60 Sekunden pro Video
+      // Safety-Timeout: dynamisch basierend auf Video-Laenge
       safeTimer = setTimeout(function() {
-        dbg('SAFETY TIMEOUT video: "' + item.file + '"');
+        dbg('SAFETY TIMEOUT video (max ' + Math.round(calcSafetyTimeout(item)/1000) + 's): "' + item.file + '"');
         cleanup();
-      }, SAFETY_TIMEOUT_MS);
+      }, calcSafetyTimeout(item));
 
       videoPlayer.src = '/media/videos/' + item.file;
       videoPlayer.volume = (item.volume != null ? item.volume : 0.5);
