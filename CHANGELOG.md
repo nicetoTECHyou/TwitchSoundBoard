@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1] – 2026-04-22
+
+### Fixed
+- **"Sign in to confirm your age" Fehler** – YouTube blockiert den direkten Download bei Altersbeschraenkungen. Jetzt automatisch: Erst Direkt-Download versuchen (schneller), bei age-restricted/private/unavailable Fehlern automatisch ueber Invidious-Proxy laden (braucht kein Login). 6 Invidious-Instanzen als Fallback.
+- Spotify-Import hat denselben Invidious-Fallback bekommen.
+- Proxy-Download hat 120s Timeout pro Instanz bevor naechste versucht wird.
+
 ## [0.2.0] – 2026-04-22
 
 ### Added

@@ -460,7 +460,7 @@ async function importFromUrl(){
   var st=document.getElementById('importStatus');
   btn.disabled=true;btn.textContent='Importiere...';
   st.style.display='block';
-  st.innerHTML='<span style="color:var(--dm)">Download laeuft, bitte warten...</span>';
+  st.innerHTML='<span style="color:var(--dm)">&#8987; Download laeuft (bei age-restricted Videos wird automatisch Invidious-Proxy genutzt)...</span>';
   try{
     var r=await fetch(A+'/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})});
     var d=await r.json();
