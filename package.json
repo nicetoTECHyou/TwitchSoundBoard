@@ -1,6 +1,6 @@
 {
   "name": "twitch-soundboard",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "TwitchSoundBoard – Lokales Sound-Alert System mit Admin Panel und OBS Overlay",
   "main": "server.js",
   "scripts": {
@@ -13,6 +13,7 @@
   "dependencies": {
     "@distube/ytdl-core": "^4.3.9",
     "dotenv": "^16.4.5",
+    "play-dl": "^1.9.7",
     "express": "^4.21.0",
     "multer": "^1.4.5-lts.1",
     "tmi.js": "^1.8.5",
