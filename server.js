@@ -496,7 +496,7 @@ app.post('/api/twitch/start', function(req, res) {
 app.post('/api/twitch/stop', function(req, res) {
   if (!twitchRunning) return res.status(400).json({ error: 'Laeuft nicht' });
   try {
-    if (chatClient) { chatClient.disconnect().then(function() { chatClient = null; twitchRunning = false; log('INFO', 'Twitch gestoppt'); res.json({ ok: true }); }).catch(function(e) { chatClient = null; twitchRunning = false; res.json({ ok: true); }); }
+    if (chatClient) { chatClient.disconnect().then(function() { chatClient = null; twitchRunning = false; log('INFO', 'Twitch gestoppt'); res.json({ ok: true }); }).catch(function(e) { chatClient = null; twitchRunning = false; res.json({ ok: true }); }); }
     else { twitchRunning = false; res.json({ ok: true }); }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
