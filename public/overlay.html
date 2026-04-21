@@ -30,6 +30,34 @@
       border-radius: 12px;
     }
 
+    /* Activate Overlay – klickbar, verschwindet nach Aktivierung */
+    #activate-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      background: rgba(0,0,0,0.35);
+    }
+    #activate-overlay.activated {
+      display: none;
+      pointer-events: none;
+    }
+    #activate-overlay .btn-box {
+      background: rgba(20,20,30,0.92);
+      border: 1px solid rgba(145,71,255,0.5);
+      border-radius: 12px;
+      padding: 24px 40px;
+      text-align: center;
+      color: #efeff1;
+      pointer-events: auto;
+    }
+    #activate-overlay .btn-box .icon { font-size: 36px; margin-bottom: 10px; }
+    #activate-overlay .btn-box .title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    #activate-overlay .btn-box .hint { font-size: 12px; color: #adadb8; }
+
     /* Debug */
     #debug-bar {
       display: none;
@@ -69,6 +97,15 @@
   </style>
 </head>
 <body>
+  <!-- Audio Aktivierung – einmal klicken, dann verschwindet -->
+  <div id="activate-overlay">
+    <div class="btn-box">
+      <div class="icon">&#128266;</div>
+      <div class="title">Klick zum Aktivieren</div>
+      <div class="hint">Audio freischalten (Browser-Autoplay)</div>
+    </div>
+  </div>
+
   <div id="overlay-container">
     <div id="video-container">
       <video id="video-player" playsinline></video>
@@ -84,54 +121,94 @@
 
     const queue = [];
     let isPlaying = false;
+    let audioUnlocked = false;
     const MAX_QUEUE = 10;
 
     const videoContainer = document.getElementById('video-container');
     const videoPlayer = document.getElementById('video-player');
     const debugBar = document.getElementById('debug-bar');
     const wsStatus = document.getElementById('ws-status');
+    const activateOverlay = document.getElementById('activate-overlay');
 
     const debug = new URLSearchParams(location.search).has('debug');
     if (debug) { debugBar.style.display = 'block'; wsStatus.style.display = 'block'; }
 
-    // ---- WebSocket ----
-    function wsUrl() {
-      const port = parseInt(location.port) || 3000;
-      return `ws://${location.hostname}:${port + 1}`;
+    // ---- Audio Unlock (Browser Autoplay Policy) ----
+    function unlockAudio() {
+      if (audioUnlocked) return;
+      var ctx;
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) {
+        audioUnlocked = true;
+        return;
+      }
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(function() {
+          ctx.close();
+          audioUnlocked = true;
+          activateOverlay.classList.add('activated');
+          dbg('Audio freigeschaltet');
+        });
+      } else {
+        ctx.close();
+        audioUnlocked = true;
+        activateOverlay.classList.add('activated');
+      }
     }
 
-    let ws, reconnects = 0;
+    // Klick auf Overlay aktiviert Audio
+    activateOverlay.addEventListener('click', unlockAudio);
+    // Auch Klick auf die ganze Seite (falls Overlay versteckt)
+    document.body.addEventListener('click', function() {
+      if (!audioUnlocked) unlockAudio();
+    }, { once: false });
+
+    // Pruefen ob OBS (OBS erlaubt autoplay meistens)
+    if (navigator.userAgent.indexOf('OBS') !== -1 || navigator.userAgent.indexOf('obs') !== -1) {
+      audioUnlocked = true;
+      activateOverlay.classList.add('activated');
+      dbg('OBS erkannt – Audio automatisch freigeschaltet');
+    }
+
+    // ---- WebSocket ----
+    function wsUrl() {
+      var port = parseInt(location.port) || 3000;
+      return 'ws://' + location.hostname + ':' + (port + 1);
+    }
+
+    var ws, reconnects = 0;
 
     function connect() {
-      dbg(`Verbinde: ${wsUrl()}`);
+      dbg('Verbinde: ' + wsUrl());
       ws = new WebSocket(wsUrl());
 
-      ws.onopen = () => {
+      ws.onopen = function() {
         reconnects = 0;
         wsStatus.className = 'ok';
         wsStatus.textContent = '\u25CF Connected';
         dbg('Verbunden');
       };
 
-      ws.onmessage = (e) => {
+      ws.onmessage = function(e) {
         try { handle(JSON.parse(e.data)); }
         catch (err) { dbg('Parse-Fehler: ' + err.message); }
       };
 
-      ws.onclose = () => {
+      ws.onclose = function() {
         wsStatus.className = 'err';
         wsStatus.textContent = '\u25CF Disconnected';
         reconnect();
       };
 
-      ws.onerror = () => ws.close();
+      ws.onerror = function() { ws.close(); };
     }
 
     function reconnect() {
       if (reconnects >= 60) return dbg('Max Reconnects erreicht');
       reconnects++;
-      const ms = Math.min(1000 * Math.pow(1.4, reconnects - 1), 30000);
-      dbg(`Reconnect in ${Math.round(ms / 1000)}s (#${reconnects})`);
+      var ms = Math.min(1000 * Math.pow(1.4, reconnects - 1), 30000);
+      dbg('Reconnect in ' + Math.round(ms / 1000) + 's (#' + reconnects + ')');
       setTimeout(connect, ms);
     }
 
@@ -142,46 +219,60 @@
 
     // ---- Queue ----
     function enqueue(data) {
-      const max = data.maxQueue || MAX_QUEUE;
-      if (queue.length >= max) return dbg(`Queue voll (${max}), verworfen: ${data.file}`);
+      var max = data.maxQueue || MAX_QUEUE;
+      if (queue.length >= max) return dbg('Queue voll (' + max + '), verworfen: ' + data.file);
       queue.push(data);
-      dbg(`+ "${data.file}" von ${data.user} via ${data.source} [${queue.length}]`);
+      dbg('+ "' + data.file + '" von ' + data.user + ' via ' + data.source + ' [' + queue.length + ']');
       if (!isPlaying) processQueue();
     }
 
     function processQueue() {
       if (!queue.length) { isPlaying = false; return; }
       isPlaying = true;
-      const item = queue.shift();
-      dbg(`> "${item.file}" (${item.mediaType}) [${queue.length}]`);
+      var item = queue.shift();
+      dbg('> "' + item.file + '" (' + item.mediaType + ') [' + queue.length + ']');
       item.mediaType === 'video' ? playVideo(item) : playSound(item);
     }
 
     // ---- Sound ----
     function playSound(item) {
-      const a = new Audio(`/media/sounds/${item.file}`);
-      a.volume = item.volume ?? 0.8;
+      if (!audioUnlocked) {
+        dbg('Audio noch gesperrt – klick auf Overlay!');
+        next();
+        return;
+      }
+      var a = new Audio('/media/sounds/' + item.file);
+      a.volume = item.volume != null ? item.volume : 0.8;
 
-      a.oncanplaythrough = () => a.play().catch(() => next());
-      a.onerror = () => { dbg(`Fehlt: /media/sounds/${item.file}`); next(); };
-      a.onended = () => setTimeout(next, 200);
+      a.oncanplaythrough = function() {
+        a.play().catch(function() { next(); });
+      };
+      a.onerror = function() { dbg('Fehlt: /media/sounds/' + item.file); next(); };
+      a.onended = function() { setTimeout(next, 200); };
     }
 
     // ---- Video ----
     function playVideo(item) {
-      videoPlayer.src = `/media/videos/${item.file}`;
-      videoPlayer.volume = item.volume ?? 0.5;
+      if (!audioUnlocked) {
+        dbg('Audio noch gesperrt – klick auf Overlay!');
+        next();
+        return;
+      }
+      videoPlayer.src = '/media/videos/' + item.file;
+      videoPlayer.volume = item.volume != null ? item.volume : 0.5;
       videoPlayer.currentTime = 0;
       videoContainer.style.display = 'block';
       videoContainer.style.animation = 'fadeIn 0.2s ease-out';
 
-      videoPlayer.oncanplaythrough = () => videoPlayer.play().catch(() => { hideVideo(); next(); });
-      videoPlayer.onerror = () => { dbg(`Fehlt: /media/videos/${item.file}`); hideVideo(); next(); };
-      videoPlayer.onended = () => { hideVideo(); setTimeout(next, 300); };
+      videoPlayer.oncanplaythrough = function() {
+        videoPlayer.play().catch(function() { hideVideo(); next(); });
+      };
+      videoPlayer.onerror = function() { dbg('Fehlt: /media/videos/' + item.file); hideVideo(); next(); };
+      videoPlayer.onended = function() { hideVideo(); setTimeout(next, 300); };
 
       // Fallback max duration
-      const maxMs = (item.videoDurationOverride || 5000) + 500;
-      setTimeout(() => {
+      var maxMs = (item.videoDurationOverride || 5000) + 500;
+      setTimeout(function() {
         if (!videoPlayer.paused && videoPlayer.readyState >= 2) {
           videoPlayer.pause(); videoPlayer.currentTime = 0;
           hideVideo(); next();
@@ -191,7 +282,7 @@
 
     function hideVideo() {
       videoContainer.style.animation = 'fadeOut 0.3s ease-in forwards';
-      setTimeout(() => {
+      setTimeout(function() {
         videoContainer.style.display = 'none';
         videoPlayer.pause();
         videoPlayer.removeAttribute('src');
@@ -202,7 +293,7 @@
     function next() { isPlaying = false; processQueue(); }
 
     function dbg(msg) {
-      const line = `[${new Date().toLocaleTimeString('de-DE')}] ${msg}`;
+      var line = '[' + new Date().toLocaleTimeString('de-DE') + '] ' + msg;
       console.log(line);
       if (debug) debugBar.textContent = line;
     }
