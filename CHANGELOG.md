@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.5] – 2026-04-21
+
+### Fixed
+- **Windows Crash behoben** – Server crasht nicht mehr auf Windows
+- Alle `async/await` und Template-Literals durch kompatible Syntax ersetzt
+- `crypto.scryptSync` mit Fallback-Key falls scrypt fehlschlaegt
+- WebSocket Port-Fehler (EADDRINUSE) wird abgefangen, probiert naechsten Port
+- `dotenv.config()` mit try/catch (crasht nicht bei fehlender/fehlerhafter .env)
+- `.env.example` hatte eckige Klammern – behoben (dotenv parsed das falsch)
+- Multer-Ladung mit try/catch abgesichert
+- Graceful Shutdown null-safe fuer wss/chatClient
+- Upload-Pfad-Erkennung funktioniert auf Windows (`indexOf` statt `includes`)
+
 ## [0.0.4] – 2026-04-21
 
 ### Changed
