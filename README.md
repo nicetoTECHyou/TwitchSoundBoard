@@ -26,20 +26,30 @@ Alles passiert im Admin Panel:
 
 Bot-Token erstellen: https://twitchtokengenerator.com/
 
+## Features
+
+- **Sounds & Videos** — Drag & Drop Upload (MP3, WAV, OGG, M4A, MP4, WebM)
+- **YouTube Embed** — YouTube Links als Video Embed hinzufuegen (kein Download!)
+- **Chat-Commands** — Eigene Befehle anlegen (z.B. `!airhorn`, `!bruh`)
+- **!ytlink** — YouTube Video direkt aus dem Chat abspielen (`!ytlink https://youtube.com/watch?v=...`)
+- **Queue-Management** — Warteschlange live einsehen, Skip/Stop/Clear
+- **Test/Trigger** — Sounds & Videos direkt im Admin testen
+- **Twitch Start/Stop** — Bot on-demand starten/stoppen
+- **OBS Overlay** — Transparentes Overlay mit Queue, Auto-Reconnect
+
+## Chat-Commands
+
+| Command | Beschreibung |
+|---------|-------------|
+| `!command` | Sound/Video abspielen (individuell konfigurierbar) |
+| `!ytlink <url>` | YouTube Video direkt aus dem Chat abspielen |
+
 ## Sicherheit
 
 - Alle Credentials werden mit AES-256 verschluesselt
 - Gespeichert in `credentials.enc` (lokal, wird nie committet)
 - Sensitive Felder sind im UI maskiert
 - Sichtbar-Button zum Pruefen der Eingabe
-
-## Features
-
-- Drag & Drop Upload
-- Chat-Command Manager
-- Test/Trigger Button
-- Twitch Start/Stop on-demand
-- OBS Overlay mit Queue
 
 ## URLs
 

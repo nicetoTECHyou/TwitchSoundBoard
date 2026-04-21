@@ -174,14 +174,11 @@
   <!-- ====== SOUNDS ====== -->
   <div class="tc" id="t-sounds">
     <div class="card">
-      <h3>YouTube / Spotify Import <span class="sub">Per Link als Embed hinzufuegen (kein Download!)</span></h3>
-      <p style="font-size:12px;color:var(--dm);margin-bottom:12px">
-        YouTube Link = <strong style="color:var(--tx)">Video Embed (sichtbar)</strong> &bull; Spotify Track = <strong style="color:var(--tx)">Audio Embed (versteckt, sucht automatisch YouTube)</strong>
-      </p>
+      <h3>YouTube Import <span class="sub">Per Link als Embed hinzufuegen (kein Download!)</span></h3>
       <div class="fr">
         <div class="fg">
-          <label>YouTube oder Spotify Link</label>
-          <input type="text" id="importUrl" placeholder="https://youtube.com/watch?v=... oder https://open.spotify.com/track/...">
+          <label>YouTube Link</label>
+          <input type="text" id="importUrl" placeholder="https://youtube.com/watch?v=... oder https://youtu.be/...">
         </div>
         <div><button class="btn bp" id="importBtn" onclick="importFromUrl()">Import</button></div>
       </div>
@@ -437,10 +434,9 @@ async function loadMedia(){
   try{
     const[s,v,l]=await Promise.all([fetch(A+'/api/sounds'),fetch(A+'/api/videos'),fetch(A+'/api/links')]);
     sounds=await s.json();videos=await v.json();links=await l.json();
-    // Links: yt_embed -> Videos, spotify_embed -> Sounds
+    // Links: yt_embed -> Videos
     allFiles=[
       ...sounds.map(f=>({...f,type:'sound'})),
-      ...links.filter(l=>l.link_type==='spotify_embed').map(l=>({name:l.link_id,type:'link',display_name:l.title,path:'link:'+l.link_id,link_type:l.link_type,video_id:l.video_id,duration_ms:l.duration_ms})),
       ...videos.map(f=>({...f,type:'video'})),
       ...links.filter(l=>l.link_type==='yt_embed').map(l=>({name:l.link_id,type:'link',display_name:l.title,path:'link:'+l.link_id,link_type:l.link_type,video_id:l.video_id,duration_ms:l.duration_ms}))
     ];
@@ -449,15 +445,13 @@ async function loadMedia(){
 }
 
 function renderFiles(){
-  // Sounds: lokale + Spotify Embeds
+  // Sounds: lokal
   var sCards=sounds.map(f=>fc(f,'sound')).join('');
-  var spCards=links.filter(l=>l.link_type==='spotify_embed').map(l=>lc(l,'sound')).join('');
-  document.getElementById('sG').innerHTML=sCards+spCards;
-  var sTotal=sounds.length+links.filter(l=>l.link_type==='spotify_embed').length;
-  document.getElementById('sC').textContent=sTotal?`(${sTotal})`:'';
-  document.getElementById('sE').style.display=sTotal?'none':'block';
+  document.getElementById('sG').innerHTML=sCards;
+  document.getElementById('sC').textContent=sounds.length?`(${sounds.length})`:'';
+  document.getElementById('sE').style.display=sounds.length?'none':'block';
 
-  // Videos: lokale + YT Embeds
+  // Videos: lokal + YT Embeds
   var vCards=videos.map(f=>fc(f,'video')).join('');
   var ytCards=links.filter(l=>l.link_type==='yt_embed').map(l=>lc(l,'video')).join('');
   document.getElementById('vG').innerHTML=vCards+ytCards;
@@ -466,20 +460,19 @@ function renderFiles(){
   document.getElementById('vE').style.display=vTotal?'none':'block';
 
   // Embed Links Uebersicht
-  document.getElementById('lG').innerHTML=links.map(l=>lc(l,l.link_type==='yt_embed'?'video':'sound')).join('');
-  document.getElementById('lC').textContent=links.length?`(${links.length})`:'';
-  document.getElementById('lE').style.display=links.length?'none':'block';
+  document.getElementById('lG').innerHTML=links.filter(l=>l.link_type==='yt_embed').map(l=>lc(l,'video')).join('');
+  var lTotal=links.filter(l=>l.link_type==='yt_embed').length;
+  document.getElementById('lC').textContent=lTotal?`(${lTotal})`:'';
+  document.getElementById('lE').style.display=lTotal?'none':'block';
 }
 
 // Link Card (Embed Links)
 function lc(l,section){
-  var isYt=l.link_type==='yt_embed';
-  var icon=isYt?'&#9654;':'&#127925;';
-  var badge=isYt?'<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;background:#ff0000;color:#fff;margin-top:6px;font-weight:600">YouTube</span>':'<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;background:#1db954;color:#fff;margin-top:6px;font-weight:600">Spotify</span>';
   var durBadge=l.duration_ms?'<span class="dur-badge">'+(l.duration_ms>=1000?(l.duration_ms/1000)+'s':l.duration_ms+'ms')+'</span>':'';
   var cmds=findCmds(l.link_id);
   var tags=cmds.map(c=>'<span class="tag">'+esc(c)+'</span>').join('');
-  return '<div class="fcard"><div class="fn" title="'+esc(l.link_id)+'">'+icon+' '+esc(l.title)+'</div><div class="fm">Embed'+badge+'</div>'+tags+durBadge+'<div class="acts"><button class="btn bg sm" onclick="testTrigger(\''+l.link_id+'\',\'link\')">&#128268; Trigger</button><button class="btn bp sm bi" onclick="openEditLinkModal(\''+l.link_id+'\')" title="Bearbeiten">&#9998;</button><button class="btn bd sm bi" onclick="delLink(\''+l.link_id+'\')" title="Loeschen">&#10005;</button></div></div>';
+  var badge='<span style="display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;background:#ff0000;color:#fff;margin-top:6px;font-weight:600">YouTube</span>';
+  return '<div class="fcard"><div class="fn" title="'+esc(l.link_id)+'">&#9654; '+esc(l.title)+'</div><div class="fm">Embed'+badge+'</div>'+tags+durBadge+'<div class="acts"><button class="btn bg sm" onclick="testTrigger(\''+l.link_id+'\',\'link\')">&#128268; Trigger</button><button class="btn bp sm bi" onclick="openEditLinkModal(\''+l.link_id+'\')" title="Bearbeiten">&#9998;</button><button class="btn bd sm bi" onclick="delLink(\''+l.link_id+'\')" title="Loeschen">&#10005;</button></div></div>';
 }
 
 function fc(f,type){
@@ -577,7 +570,7 @@ async function importFromUrl(){
     var d=await r.json();
     if(r.ok){
       var imp=d.import;
-      var lbl=imp.embed_type==='yt_video'?'YouTube Video Embed':'Spotify Audio Embed';
+      var lbl='YouTube Video Embed';
       st.innerHTML='<span style=\"color:var(--gn)\">&#10003; '+esc(imp.title)+'</span> als '+lbl+' hinzugefuegt';
       toast('"'+imp.title+'" importiert!','ok');
       document.getElementById('importUrl').value='';
@@ -678,7 +671,7 @@ async function loadQueue(){
       var c=d.current;
       document.getElementById('qCurName').textContent='#1';
       document.getElementById('qCurLabel').textContent=c.label||c.file||'-';
-      document.getElementById('qCurType').textContent=c.embedType==='yt_video'?'YT Video':c.embedType==='yt_audio'?'Spotify':c.mediaType==='video'?'Video':'Sound';
+      document.getElementById('qCurType').textContent=c.mediaType==='link'?'YouTube':c.mediaType==='video'?'Video':'Sound';
       document.getElementById('qCurUser').textContent=c.user||'-';
     }else{
       qCur.style.display='none';
@@ -692,7 +685,7 @@ async function loadQueue(){
     }else{
       qEmpty.style.display='none';
       qList.innerHTML=items.map(function(item,i){
-        var type=item.embedType==='yt_video'?'YT Video':item.embedType==='yt_audio'?'Spotify':item.mediaType==='video'?'Video':'Sound';
+        var type=item.mediaType==='link'?'YouTube':item.mediaType==='video'?'Video':'Sound';
         return '<li class=\"citem\"><span class=\"cn\" style=\"color:var(--or);min-width:50px;text-align:center\">#'+(i+2)+'</span><span class=\"cf\">'+esc(item.label||item.file||'-')+'</span><span class=\"ct\">'+type+'</span><span class=\"ct\">'+esc(item.user||'-')+'</span></li>';
       }).join('');
     }

@@ -1,6 +1,6 @@
 // =============================================
-// TwitchSoundBoard – Server v0.4.0
-// YouTube/Spotify als Embed (kein Download!)
+// TwitchSoundBoard – Server v0.5.0
+// YouTube Embed (kein Download!)
 // =============================================
 
 const express = require('express');
@@ -78,18 +78,17 @@ try {
 } catch (e) { log('ERROR', 'Multer nicht geladen: ' + e.message); }
 
 // =============================================
-// YouTube / Spotify EMBED Import (kein Download!)
+// YouTube EMBED Import (kein Download!)
 // =============================================
 
 function isYtUrl(url) { return /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)[a-zA-Z0-9_-]{6,}/i.test(url); }
-function isSpotifyUrl(url) { return /spotify\.com\/track\//i.test(url); }
 function extractYtVideoId(url) { var m = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{6,})/i); return m ? m[1] : null; }
 
 // YouTube Titel via noembed.com (keine API-Key noetig)
 function getYtTitle(videoId) {
   return new Promise(function(resolve, reject) {
     var url = 'https://noembed.com/embed?url=https://www.youtube.com/watch?v=' + videoId;
-    https.get(url, { headers: { 'User-Agent': 'TwitchSoundBoard/0.4.0' } }, function(resp) {
+    https.get(url, { headers: { 'User-Agent': 'TwitchSoundBoard/0.5.0' } }, function(resp) {
       var data = '';
       resp.on('data', function(chunk) { data += chunk; });
       resp.on('end', function() {
@@ -97,133 +96,6 @@ function getYtTitle(videoId) {
         catch (e) { reject(e); }
       });
     }).on('error', reject).setTimeout(8000, function() { reject(new Error('Timeout')); });
-  });
-}
-
-// Spotify Track Info via oEmbed
-function getSpotifyTrackInfo(url) {
-  return new Promise(function(resolve, reject) {
-    https.get('https://open.spotify.com/oembed?url=' + encodeURIComponent(url), { headers: { 'User-Agent': 'TwitchSoundBoard/0.4.0' } }, function(resp) {
-      if (resp.statusCode !== 200) return reject(new Error('Spotify Track nicht gefunden'));
-      var data = '';
-      resp.on('data', function(chunk) { data += chunk; });
-      resp.on('end', function() {
-        try { var json = JSON.parse(data); resolve({ title: json.title || 'Unknown Track' }); }
-        catch (e) { reject(new Error('Spotify Antwort unlesbar')); }
-      });
-    }).on('error', function(err) { reject(new Error('Spotify Fehler: ' + err.message)); });
-  });
-}
-
-// YouTube Suche via Piped API (fuer Spotify → YouTube)
-function searchYouTube(query) {
-  return new Promise(function(resolve, reject) {
-    var pipedInstances = [
-      'https://pipedapi.kavin.rocks',
-      'https://pipedapi.r4fo.com',
-      'https://pipedapi.adminforge.de',
-      'https://pipedapi-libre.kavin.rocks',
-      'https://pipedapi.in.projectsegfau.lt',
-      'https://pipedapi.moomoo.me',
-      'https://watchapi.whatever.social'
-    ];
-
-    // Versuche Piped mit verschiedenen Filtern
-    var filters = ['music_songs', 'videos', ''];
-    var instanceIdx = 0;
-    var filterIdx = 0;
-
-    function tryPiped() {
-      if (instanceIdx >= pipedInstances.length) {
-        // Fallback: Invidious Suche
-        return searchYouTubeInvidious(query).then(resolve).catch(function() {
-          reject(new Error('YouTube-Suche fehlgeschlagen (alle Instanzen unerreichbar)'));
-        });
-      }
-
-      var filter = filters[filterIdx] || '';
-      var qs = '?q=' + encodeURIComponent(query);
-      if (filter) qs += '&filter=' + filter;
-
-      var apiUrl = pipedInstances[instanceIdx] + '/search' + qs;
-      log('INFO', 'YT Suche Piped [' + (instanceIdx+1) + '/' + pipedInstances.length + '] filter=' + (filter || 'none') + ': ' + pipedInstances[instanceIdx]);
-
-      https.get(apiUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.4.1' } }, function(resp) {
-        if (resp.statusCode !== 200) { resp.resume(); nextInstance(); return; }
-        var data = '';
-        resp.on('data', function(chunk) { data += chunk; });
-        resp.on('end', function() {
-          try {
-            var json = JSON.parse(data);
-            var items = json.items || json;
-            if (Array.isArray(items) && items.length > 0) {
-              var video = null;
-              for (var i = 0; i < items.length; i++) {
-                if (items[i].type === 'stream' || (items[i].url && items[i].url.indexOf('/watch') !== -1)) {
-                  video = items[i]; break;
-                }
-              }
-              if (!video && items[0] && items[0].url) video = items[0];
-              if (video && video.url) {
-                var vid = video.url.match(/[?&]v=([a-zA-Z0-9_-]{6,})/);
-                if (vid) {
-                  log('INFO', 'YT Suche Treffer: ' + video.title + ' (' + vid[1] + ')');
-                  return resolve({ videoId: vid[1], title: video.title });
-                }
-              }
-            }
-            nextInstance();
-          } catch (e) { nextInstance(); }
-        });
-      }).on('error', function() { nextInstance(); }).setTimeout(8000, function() { nextInstance(); });
-    }
-
-    function nextInstance() {
-      filterIdx++;
-      if (filterIdx >= filters.length) { filterIdx = 0; instanceIdx++; }
-      tryPiped();
-    }
-
-    tryPiped();
-  });
-}
-
-function searchYouTubeInvidious(query) {
-  return new Promise(function(resolve, reject) {
-    var instances = [
-      'https://inv.nadeko.net',
-      'https://invidious.fdn.fr',
-      'https://vid.puffyan.us',
-      'https://yewtu.be',
-      'https://invidious.perennialte.ch',
-      'https://invidious.nerdvpn.de',
-      'https://invidious.jing.rocks',
-      'https://iv.ggtyler.dev',
-      'https://invidious.privacyredirect.com',
-      'https://invidious.protokolla.fi'
-    ];
-
-    function tryInst(idx) {
-      if (idx >= instances.length) return reject(new Error('Invidious Suche fehlgeschlagen'));
-
-      var apiUrl = instances[idx] + '/api/v1/search?q=' + encodeURIComponent(query) + '&type=video&sort_by=relevance';
-      log('INFO', 'YT Suche Invidious [' + (idx+1) + '/' + instances.length + ']: ' + instances[idx]);
-      https.get(apiUrl, { headers: { 'User-Agent': 'TwitchSoundBoard/0.4.1' } }, function(resp) {
-        if (resp.statusCode !== 200) { resp.resume(); return tryInst(idx + 1); }
-        var data = '';
-        resp.on('data', function(chunk) { data += chunk; });
-        resp.on('end', function() {
-          try {
-            var results = JSON.parse(data);
-            var videos = (Array.isArray(results) ? results : []).filter(function(r) { return r.type === 'video'; });
-            if (videos.length > 0) return resolve({ videoId: videos[0].videoId, title: videos[0].title });
-            tryInst(idx + 1);
-          } catch (e) { tryInst(idx + 1); }
-        });
-      }).on('error', function() { tryInst(idx + 1); }).setTimeout(8000, function() { tryInst(idx + 1); });
-    }
-
-    tryInst(0);
   });
 }
 
@@ -250,34 +122,6 @@ async function importYouTubeEmbed(url) {
 
   log('INFO', 'YT Embed importiert: "' + title + '" (ID: ' + videoId + ')');
   return { link_id: linkId, title: title, video_id: videoId, embed_type: 'yt_video' };
-}
-
-// Spotify Embed Import (Suche YouTube → Embed, kein Download!)
-async function importSpotifyEmbed(url) {
-  // 1. Spotify Track Name holen
-  var trackInfo = await getSpotifyTrackInfo(url);
-  var searchQuery = trackInfo.title + ' official audio';
-  log('INFO', 'Spotify Import: Suche "' + searchQuery + '" auf YouTube...');
-
-  // 2. Auf YouTube suchen
-  var ytResult = await searchYouTube(searchQuery);
-  log('INFO', 'Spotify Import: YT Treffer "' + ytResult.title + '" (ID: ' + ytResult.videoId + ')');
-
-  var linkId = 'yt_' + ytResult.videoId;
-
-  if (!config.links) config.links = {};
-  config.links[linkId] = {
-    link_type: 'spotify_embed',
-    video_id: ytResult.videoId,
-    spotify_url: url,
-    title: trackInfo.title,
-    yt_title: ytResult.title,
-    duration_ms: null
-  };
-  saveConfig();
-
-  log('INFO', 'Spotify Embed importiert: "' + trackInfo.title + '" → YT ' + ytResult.videoId);
-  return { link_id: linkId, title: trackInfo.title, video_id: ytResult.videoId, embed_type: 'yt_audio' };
 }
 
 // ---- Port ----
@@ -439,7 +283,7 @@ app.post('/api/test-trigger', function(req, res) {
 });
 
 // =============================================
-// API – YouTube / Spotify Embed Import
+// API – YouTube Embed Import
 // =============================================
 app.post('/api/import', function(req, res) {
   var url = (req.body.url || '').trim();
@@ -453,16 +297,8 @@ app.post('/api/import', function(req, res) {
       log('ERROR', 'YT Embed Import Error: ' + err.message);
       res.status(500).json({ error: err.message });
     });
-  } else if (isSpotifyUrl(url)) {
-    importSpotifyEmbed(url).then(function(result) {
-      broadcast({ type: 'config_reloaded', config: config });
-      res.json({ ok: true, 'import': result });
-    }).catch(function(err) {
-      log('ERROR', 'Spotify Embed Import Error: ' + err.message);
-      res.status(500).json({ error: err.message });
-    });
   } else {
-    res.status(400).json({ error: 'Nur YouTube oder Spotify Track Links unterstuetzt' });
+    res.status(400).json({ error: 'Nur YouTube Links unterstuetzt' });
   }
 });
 
@@ -483,45 +319,24 @@ app.put('/api/credentials', function(req, res) {
 });
 
 // =============================================
-// Chat Link Handler (!ytlink, !spotifylink)
+// Chat Link Handler (!ytlink)
 // =============================================
-async function handleChatLink(url, type, user) {
+async function handleChatLink(url, user) {
   try {
+    if (!isYtUrl(url)) { log('WARN', 'Chat Link: Ungueltige URL von ' + user + ': ' + url); return; }
+    var videoId = extractYtVideoId(url);
+    if (!videoId) { log('WARN', 'Chat Link: Ungueltige YT URL von ' + user); return; }
+    var linkId = 'yt_' + videoId;
     var result;
-    if (type === 'youtube' && isYtUrl(url)) {
-      var videoId = extractYtVideoId(url);
-      if (!videoId) { log('WARN', 'Chat Link: Ungueltige YT URL von ' + user); return; }
-      var linkId = 'yt_' + videoId;
-      // Pruefe ob bereits importiert
-      if ((config.links || {})[linkId]) {
-        var link = config.links[linkId];
-        result = { link_id: linkId, title: link.title, video_id: link.video_id, embed_type: link.link_type === 'yt_embed' ? 'yt_video' : 'yt_audio' };
-      } else {
-        result = await importYouTubeEmbed(url);
-      }
-      triggerOverlay(result.link_id, 'link', 'chat', user);
-      log('INFO', 'Chat !ytlink: "' + result.title + '" von ' + user);
-    } else if (type === 'spotify' && isSpotifyUrl(url)) {
-      // Pruefe ob bereits importiert (nach spotify_url suchen)
-      var existingId = null;
-      for (var k in (config.links || {})) {
-        if (((config.links[k].spotify_url || '') === url) || ((config.links[k].spotify_url || '') === url.split('?')[0])) {
-          existingId = k; break;
-        }
-      }
-      if (existingId) {
-        var existingLink = config.links[existingId];
-        result = { link_id: existingId, title: existingLink.title, video_id: existingLink.video_id, embed_type: 'yt_audio' };
-        triggerOverlay(result.link_id, 'link', 'chat', user);
-        log('INFO', 'Chat !spotifylink (cached): "' + result.title + '" von ' + user);
-      } else {
-        result = await importSpotifyEmbed(url);
-        triggerOverlay(result.link_id, 'link', 'chat', user);
-        log('INFO', 'Chat !spotifylink (neu): "' + result.title + '" von ' + user);
-      }
+    // Pruefe ob bereits importiert
+    if ((config.links || {})[linkId]) {
+      var link = config.links[linkId];
+      result = { link_id: linkId, title: link.title, video_id: link.video_id };
     } else {
-      log('WARN', 'Chat Link: Ungueltige URL von ' + user + ': ' + url);
+      result = await importYouTubeEmbed(url);
     }
+    triggerOverlay(result.link_id, 'link', 'chat', user);
+    log('INFO', 'Chat !ytlink: "' + result.title + '" von ' + user);
   } catch (e) {
     log('ERROR', 'Chat Link Fehler von ' + user + ': ' + e.message);
   }
@@ -565,13 +380,7 @@ app.post('/api/twitch/start', function(req, res) {
 
         // !ytlink <url> – YouTube Video direkt aus Chat abspielen
         if (cmd === prefix + 'ytlink' && rest) {
-          handleChatLink(rest, 'youtube', user);
-          return;
-        }
-
-        // !spotifylink <url> – Spotify Track direkt aus Chat abspielen
-        if (cmd === prefix + 'spotifylink' && rest) {
-          handleChatLink(rest, 'spotify', user);
+          handleChatLink(rest, user);
           return;
         }
       }
@@ -669,26 +478,22 @@ function triggerOverlay(file, type, source, user) {
   var dur;
 
   if (type === 'link') {
-    // Embed Link (YouTube / Spotify)
+    // Embed Link (YouTube)
     var link = (config.links || {})[file];
     if (!link) { log('WARN', 'Trigger: Link "' + file + '" nicht gefunden'); return; }
-
-    var embedType = (link.link_type === 'spotify_embed') ? 'yt_audio' : 'yt_video';
 
     // Dauer: Link-Einstellung > Global
     if (link.duration_ms !== undefined && link.duration_ms !== null) {
       dur = link.duration_ms;
-    } else if (embedType === 'yt_video') {
-      dur = s.video_duration_override_ms || 5000;
     } else {
-      dur = null; // ganzes Audio
+      dur = s.video_duration_override_ms || 5000;
     }
 
     broadcast({
       type: 'play', file: file, mediaType: 'link',
-      embedType: embedType, videoId: link.video_id,
+      embedType: 'yt_video', videoId: link.video_id,
       source: source, user: user || 'System',
-      volume: embedType === 'yt_video' ? (s.video_volume || 0.5) : (s.sound_volume || 0.8),
+      volume: s.video_volume || 0.5,
       allowOverlap: s.allow_overlap || false, maxQueue: s.max_queue_size || 10,
       durationOverride: dur
     });

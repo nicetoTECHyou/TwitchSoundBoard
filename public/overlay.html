@@ -124,8 +124,7 @@
   <script>
     // =============================================
     // TwitchSoundBoard – OBS Overlay v5
-    // Support: Lokale Dateien + YouTube/Spotify Embeds
-    // Queue-Management: Bidirektionales WebSocket
+    // YouTube Embed + Lokale Dateien + Queue-Management
     // =============================================
 
     var queue = [];
@@ -136,7 +135,6 @@
     // YouTube Player State
     var ytApiReady = false;
     var currentYTPlayer = null;
-    var ytHiddenContainer = null; // fuer Spotify (versteckter YT Player)
 
     // Audio unlock
     var audioUnlocked = false;
@@ -344,7 +342,6 @@
         return;
       }
 
-      var isHidden = (item.embedType === 'yt_audio'); // Spotify = versteckt
       var done = false;
       var durTimer = null;
       var safeTimer = null;
@@ -366,26 +363,13 @@
         ytEmbedVisible.style.display = 'none';
         ytEmbedVisible.innerHTML = '';
 
-        // Versteckten Container entfernen
-        if (ytHiddenContainer) {
-          ytHiddenContainer.remove();
-          ytHiddenContainer = null;
-        }
-
         dbg('Embed done: ' + item.videoId);
         finishCurrent();
       }
 
       // Safety-Timeout
       var dur = item.durationOverride;
-      var safetyMs;
-      if (dur && dur > 0) {
-        safetyMs = dur + 15000;
-      } else if (isHidden) {
-        safetyMs = 300000; // 5 Min fuer Audio
-      } else {
-        safetyMs = 600000; // 10 Min fuer Video
-      }
+      var safetyMs = (dur && dur > 0) ? (dur + 15000) : 600000; // 10 Min fuer Video
 
       safeTimer = setTimeout(function() {
         dbg('Embed safety timeout: ' + item.videoId);
@@ -400,54 +384,34 @@
         }, dur);
       }
 
-      if (isHidden) {
-        // Spotify: Versteckter YouTube Player (Audio only)
-        ytHiddenContainer = document.createElement('div');
-        ytHiddenContainer.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;pointer-events:none;';
-        ytHiddenContainer.id = 'yt-hidden-' + Date.now();
-        document.body.appendChild(ytHiddenContainer);
+      // YouTube: Sichtbares Video Embed
+      ytEmbedVisible.style.display = 'block';
+      ytEmbedVisible.innerHTML = '';
 
-        currentYTPlayer = new YT.Player(ytHiddenContainer.id, {
-          videoId: item.videoId,
-          width: 1, height: 1,
-          playerVars: { autoplay: 1, controls: 0 },
-          events: {
-            onReady: function(e) { e.target.setVolume(Math.round((item.volume != null ? item.volume : 0.8) * 100)); e.target.playVideo(); dbg('Spotify Embed spielt (versteckt): ' + item.videoId); },
-            onStateChange: function(e) { if (e.data === YT.PlayerState.ENDED) { dbg('Embed ended: ' + item.videoId); cleanup(); } },
-            onError: function(e) { dbg('Embed Error ' + e.data + ': ' + item.videoId); cleanup(); }
-          }
-        });
+      var playerDiv = document.createElement('div');
+      playerDiv.id = 'yt-visible-' + Date.now();
+      playerDiv.style.cssText = 'width:854px;height:480px;';
+      ytEmbedVisible.appendChild(playerDiv);
 
-      } else {
-        // YouTube: Sichtbares Video Embed
-        ytEmbedVisible.style.display = 'block';
-        ytEmbedVisible.innerHTML = '';
-
-        var playerDiv = document.createElement('div');
-        playerDiv.id = 'yt-visible-' + Date.now();
-        playerDiv.style.cssText = 'width:854px;height:480px;';
-        ytEmbedVisible.appendChild(playerDiv);
-
-        currentYTPlayer = new YT.Player(playerDiv.id, {
-          videoId: item.videoId,
-          width: 854, height: 480,
-          playerVars: {
-            autoplay: 1,
-            controls: 0,
-            modestbranding: 1,
-            rel: 0,
-            showinfo: 0,
-            iv_load_policy: 3,
-            fs: 0,
-            disablekb: 1
-          },
-          events: {
-            onReady: function(e) { e.target.setVolume(Math.round((item.volume != null ? item.volume : 0.5) * 100)); e.target.playVideo(); dbg('YT Embed spielt: ' + item.videoId); },
-            onStateChange: function(e) { if (e.data === YT.PlayerState.ENDED) { dbg('YT Embed ended: ' + item.videoId); cleanup(); } },
-            onError: function(e) { dbg('YT Embed Error ' + e.data + ': ' + item.videoId); cleanup(); }
-          }
-        });
-      }
+      currentYTPlayer = new YT.Player(playerDiv.id, {
+        videoId: item.videoId,
+        width: 854, height: 480,
+        playerVars: {
+          autoplay: 1,
+          controls: 0,
+          modestbranding: 1,
+          rel: 0,
+          showinfo: 0,
+          iv_load_policy: 3,
+          fs: 0,
+          disablekb: 1
+        },
+        events: {
+          onReady: function(e) { e.target.setVolume(Math.round((item.volume != null ? item.volume : 0.5) * 100)); e.target.playVideo(); dbg('YT Embed spielt: ' + item.videoId); },
+          onStateChange: function(e) { if (e.data === YT.PlayerState.ENDED) { dbg('YT Embed ended: ' + item.videoId); cleanup(); } },
+          onError: function(e) { dbg('YT Embed Error ' + e.data + ': ' + item.videoId); cleanup(); }
+        }
+      });
     }
 
     // =============================================
