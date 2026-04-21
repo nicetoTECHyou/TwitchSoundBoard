@@ -8,26 +8,32 @@ echo   TwitchSoundBoard
 echo ================================================
 echo.
 
-if not exist ".env" (
-    echo [PORT=3000] > .env
-    echo [WS_PORT=3001] >> .env
-    echo [OK] .env erstellt (nur Ports).
+where node >nul 2>&1
+if errorlevel 1 (
+    echo [FEHLER] Node.js nicht gefunden!
+    echo Lade es herunter: https://nodejs.org
     echo.
-)
-
-if not exist "node_modules" (
-    echo [SETUP] Installiere Dependencies...
-    call npm install
-    if errorlevel 1 (
-        echo [FEHLER] npm install fehlgeschlagen!
-        echo Brauchst du Node.js? https://nodejs.org
-        pause
-        exit /b 1
-    )
+    pause
+    exit /b 1
 )
 
 if not exist "sounds" mkdir sounds
 if not exist "videos" mkdir videos
+
+if not exist "node_modules" (
+    echo [SETUP] Erste Installation - Dependencies werden installiert...
+    echo Das kann einen Moment dauern...
+    call npm install
+    if errorlevel 1 (
+        echo.
+        echo [FEHLER] npm install fehlgeschlagen!
+        echo.
+        pause
+        exit /b 1
+    )
+    echo [SETUP] Fertig!
+    echo.
+)
 
 echo [START]
 echo.
@@ -40,5 +46,11 @@ echo ================================================
 echo.
 
 node server.js
+
+if errorlevel 1 (
+    echo.
+    echo [FEHLER] Server ist abgestuerzt!
+    echo.
+)
 
 pause

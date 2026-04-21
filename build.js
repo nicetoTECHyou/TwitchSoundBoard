@@ -71,6 +71,7 @@ function createZip(version) {
       'config.json',
       '.env.example',
       '.gitignore',
+      '.gitattributes',
       'README.md',
       'CHANGELOG.md',
       'VERSION',
@@ -87,7 +88,14 @@ function createZip(version) {
     for (const file of includeFiles) {
       const filePath = path.join(ROOT_DIR, file);
       if (fs.existsSync(filePath)) {
-        archive.file(filePath, { name: file });
+        // .bat Dateien MUESSEN CRLF Zeilenenden haben fuer Windows
+        if (file.endsWith('.bat')) {
+          let content = fs.readFileSync(filePath, 'utf-8');
+          content = content.replace(/\r?\n/g, '\r\n');
+          archive.append(content, { name: file });
+        } else {
+          archive.file(filePath, { name: file });
+        }
       }
     }
 

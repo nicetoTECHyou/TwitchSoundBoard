@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.6] – 2026-04-21
+
+### Fixed
+- **Windows Crash Fix – endlich!** start.bat hatte Unix-Zeilenenden (LF) statt Windows-Zeilenenden (CRLF). Windows cmd.exe konnte die Datei nicht lesen und schloss das Fenster sofort. Alle Versionen davor hatten denselben Bug.
+- build.js konvertiert .bat Dateien jetzt automatisch zu CRLF im ZIP-Archiv
+- `.gitattributes` hinzugefuegt: git speichert .bat Dateien immer mit CRLF
+- start.bat komplett neu geschrieben: robustere Fehlerbehandlung, Node.js-Check vor dem Start, bessere Fehlermeldungen
+
+### Changed
+- start.bat zeigt jetzt klaere Fehlermeldung wenn Node.js nicht installiert ist
+- start.bat zeigt Fehler wenn der Server crasht (statt sich einfach zu schliessen)
+
 ## [0.0.5] – 2026-04-21
 
 ### Fixed
