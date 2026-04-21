@@ -32,7 +32,7 @@
     .fcard .fn{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
     .fcard .fm{font-size:11px;color:var(--dm)}
     .fcard .acts{display:flex;gap:6px;margin-top:8px}
-    .fcard .tag{display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;background:var(--ac);color:#fff;margin-top:6px}
+    .fcard .dur-badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:4px;background:var(--or);color:#000;margin-top:6px;margin-left:4px;font-weight:600}
 
     .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:500;transition:.15s}
     .bp{background:var(--ac);color:#fff}.bp:hover{background:var(--ac2)}
@@ -97,6 +97,14 @@
     a:hover{text-decoration:underline}
 
     @media(max-width:768px){.sgrid{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.cred-row{flex-direction:column}}
+
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8000;display:flex;align-items:center;justify-content:center}
+    .modal-bg.hidden{display:none}
+    .modal{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:24px;min-width:360px;max-width:480px;width:90%}
+    .modal h3{font-size:16px;font-weight:600;margin-bottom:18px}
+    .modal .fr{margin-bottom:14px}
+    .modal .dur-info{font-size:11px;color:var(--dm);margin-top:4px}
+    .modal .dur-info em{color:var(--ac);font-style:normal}
   </style>
 </head>
 <body>
@@ -239,6 +247,33 @@
 <div class="toast-wrap" id="toasts"></div>
 <audio id="prev" style="display:none"></audio>
 
+<!-- Edit Modal -->
+<div class="modal-bg hidden" id="editModal">
+  <div class="modal">
+    <h3>Datei bearbeiten</h3>
+    <div class="fr">
+      <div class="fg"><label>Dateiname</label><input type="text" id="emName" readonly style="opacity:.6"></div>
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label>Anzeigename</label>
+        <input type="text" id="emDisp" placeholder="Optional – Name im Admin anzeigen">
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label>Max. Spieldauer (ms)</label>
+        <input type="number" id="emDur" placeholder="z.B. 3000 = 3 Sekunden" min="0" max="60000" step="100">
+        <div class="dur-info">Leer = Standarddauer. <em>0</em> = gesamte Datei abspielen (fuer Videos). Fuer Sounds: Datei wird nach dieser Zeit abgeschnitten.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn bp" onclick="saveFileSettings()">Speichern</button>
+      <button class="btn bs" onclick="closeEditModal()">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const A='';
 let sounds=[],videos=[],allFiles=[],config={chat_commands:{},settings:{}};
@@ -348,10 +383,38 @@ function renderFiles(){
 
 function fc(f,type){
   const sz=(f.size/1024).toFixed(0)+' KB';
+  const disp=f.display_name||null;
+  const dur=f.duration_ms;
   const cmds=findCmds(f.name);
-  const tags=cmds.map(c=>`<span class="tag">${c}</span>`).join('');
-  return`<div class="fcard"><div class="fn" title="${f.name}">${f.originalName||f.name}</div><div class="fm">${sz}</div>${tags}<div class="acts"><button class="btn bs sm" onclick="preview('${f.path}','${type}')">&#9654; Test</button><button class="btn bg sm" onclick="testTrigger('${f.name}','${type}')">&#128268; Trigger</button><button class="btn bd sm bi" onclick="delFile('${type}','${f.name}')" title="Loeschen">&#10005;</button></div></div>`;
+  const tags=cmds.map(c=>'<span class="tag">'+esc(c)+'</span>').join('');
+  const durBadge=dur?'<span class="dur-badge">'+(dur>=1000?(dur/1000)+'s':dur+'ms')+'</span>':'';
+  const label=disp?esc(disp):esc(f.name.replace(/^\d+_/, ''));
+  const fullLabel=disp?esc(disp)+' <span style="color:var(--dm);font-size:11px">'+esc(f.name)+'</span>':esc(f.name);
+  return '<div class="fcard"><div class="fn" title="'+esc(f.name)+'">'+fullLabel+'</div><div class="fm">'+sz+'</div>'+tags+durBadge+'<div class="acts"><button class="btn bs sm" onclick="preview(\''+f.path+'\',\''+type+'\')">&#9654; Test</button><button class="btn bg sm" onclick="testTrigger(\''+f.name+'\',\''+type+'\')">&#128268; Trigger</button><button class="btn bp sm bi" onclick="openEditModal(\''+f.name+'\',\''+type+'\')" title="Bearbeiten">&#9998;</button><button class="btn bd sm bi" onclick="delFile(\''+type+'\',\''+f.name+'\')" title="Loeschen">&#10005;</button></div></div>';
 }
+
+let editFile=null;
+function openEditModal(name,type){
+  editFile={name,type};
+  document.getElementById('emName').value=name;
+  const fs_cfg=(config.file_settings||{})[name]||{};
+  document.getElementById('emDisp').value=fs_cfg.display_name||'';
+  document.getElementById('emDur').value=fs_cfg.duration_ms||'';
+  document.getElementById('editModal').classList.remove('hidden');
+}
+function closeEditModal(){document.getElementById('editModal').classList.add('hidden');editFile=null;}
+
+async function saveFileSettings(){
+  if(!editFile)return;
+  try{
+    const r=await fetch(A+'/api/media/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:editFile.name,duration_ms:document.getElementById('emDur').value||null,display_name:document.getElementById('emDisp').value.trim()||null})});
+    const d=await r.json();
+    if(r.ok){toast('Gespeichert','ok');closeEditModal();await loadMedia();await loadCfg();}
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Fehler','err');}
+}
+
+document.getElementById('editModal').addEventListener('click',function(e){if(e.target===this)closeEditModal();});
 
 function findCmds(fn){const r=[];for(const[k,v]of Object.entries(config.chat_commands||{}))if(v.file===fn)r.push(k);return r;}
 
@@ -410,7 +473,7 @@ async function saveSet(){
 }
 
 function updateSelects(){
-  const opts='<option value="">-- Datei waehlen --</option>'+allFiles.map(f=>`<option value="${f.path}">${f.originalName||f.name} (${f.type})</option>`).join('');
+  const opts='<option value="">-- Datei waehlen --</option>'+allFiles.map(f=>'<option value="'+f.path+'">'+esc(f.display_name||f.name.replace(/^\d+_/,''))+' ('+f.type+')</option>').join('');
   document.getElementById('cF').innerHTML=opts;
 }
 

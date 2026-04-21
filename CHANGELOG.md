@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.0.8] – 2026-04-21
+
+### Added
+- **Datei bearbeiten** – Bearbeiten-Button (Stift-Icon) auf jedem Sound/Video
+- **Per-File Spieldauer** – Max. Spieldauer in ms pro Datei einstellbar
+- **Anzeigename** – Optionaler Anzeigename fuer Dateien im Admin
+- Dauer-Badge wird auf File-Cards angezeigt wenn gesetzt (orange)
+- Edit-Modal mit Anzeigename + Spieldauer + Dateiname (readonly)
+
+### Changed
+- API: `PUT /api/media/settings` fuer per-File Einstellungen
+- API: Sounds/Videos liefern jetzt `duration_ms` und `display_name`
+- Overlay nutzt `durationOverride` pro Datei (Sound wird abgeschnitten, Video gestoppt)
+- Command-Dropdown zeigt Anzeigename statt internem Dateinamen
+
 ## [0.0.7] – 2026-04-21
 
 ### Changed

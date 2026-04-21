@@ -243,12 +243,20 @@
       }
       var a = new Audio('/media/sounds/' + item.file);
       a.volume = item.volume != null ? item.volume : 0.8;
+      var durTimer = null;
 
       a.oncanplaythrough = function() {
         a.play().catch(function() { next(); });
+        // Per-File Duration Override fuer Sounds
+        if (item.durationOverride && item.durationOverride > 0) {
+          durTimer = setTimeout(function() {
+            a.pause(); a.currentTime = 0;
+            next();
+          }, item.durationOverride);
+        }
       };
-      a.onerror = function() { dbg('Fehlt: /media/sounds/' + item.file); next(); };
-      a.onended = function() { setTimeout(next, 200); };
+      a.onerror = function() { dbg('Fehlt: /media/sounds/' + item.file); clearTimeout(durTimer); next(); };
+      a.onended = function() { clearTimeout(durTimer); setTimeout(next, 200); };
     }
 
     // ---- Video ----
@@ -270,8 +278,8 @@
       videoPlayer.onerror = function() { dbg('Fehlt: /media/videos/' + item.file); hideVideo(); next(); };
       videoPlayer.onended = function() { hideVideo(); setTimeout(next, 300); };
 
-      // Fallback max duration
-      var maxMs = (item.videoDurationOverride || 5000) + 500;
+      // Duration Override
+      var maxMs = item.durationOverride || 5000;
       setTimeout(function() {
         if (!videoPlayer.paused && videoPlayer.readyState >= 2) {
           videoPlayer.pause(); videoPlayer.currentTime = 0;

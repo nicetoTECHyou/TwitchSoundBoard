@@ -1,5 +1,5 @@
 // =============================================
-// TwitchSoundBoard – Server v0.0.7
+// TwitchSoundBoard – Server v0.0.8
 // Lokal, kein HTTPS, kein Crash
 // =============================================
 
@@ -160,18 +160,26 @@ app.use('/media/videos', express.static(VIDEOS_DIR));
 // =============================================
 app.get('/api/sounds', function(req, res) {
   try {
+    var fs_cfg = config.file_settings || {};
     var files = fs.readdirSync(SOUNDS_DIR)
       .filter(function(f) { return /\.(mp3|wav|ogg)$/i.test(f); })
-      .map(function(f) { return { name: f, path: '/media/sounds/' + f, size: fs.statSync(path.join(SOUNDS_DIR, f)).size }; });
+      .map(function(f) {
+        var st = fs_cfg[f] || {};
+        return { name: f, path: '/media/sounds/' + f, size: fs.statSync(path.join(SOUNDS_DIR, f)).size, duration_ms: st.duration_ms || null, display_name: st.display_name || null };
+      });
     res.json(files);
   } catch (e) { res.json([]); }
 });
 
 app.get('/api/videos', function(req, res) {
   try {
+    var fs_cfg = config.file_settings || {};
     var files = fs.readdirSync(VIDEOS_DIR)
       .filter(function(f) { return /\.(mp4|webm|avi|mov)$/i.test(f); })
-      .map(function(f) { return { name: f, path: '/media/videos/' + f, size: fs.statSync(path.join(VIDEOS_DIR, f)).size }; });
+      .map(function(f) {
+        var st = fs_cfg[f] || {};
+        return { name: f, path: '/media/videos/' + f, size: fs.statSync(path.join(VIDEOS_DIR, f)).size, duration_ms: st.duration_ms || null, display_name: st.display_name || null };
+      });
     res.json(files);
   } catch (e) { res.json([]); }
 });
@@ -205,10 +213,39 @@ app.delete('/api/media/:type/:filename', function(req, res) {
     for (var k in (config.chat_commands || {})) {
       if (config.chat_commands[k].file === filename) delete config.chat_commands[k];
     }
+    if (config.file_settings) delete config.file_settings[filename];
     saveConfig();
     log('INFO', 'Geloescht: ' + filename);
     res.json({ success: true });
   } catch (e) { res.status(404).json({ error: 'Nicht gefunden' }); }
+});
+
+// =============================================
+// API – File Settings (duration, display_name)
+// =============================================
+app.put('/api/media/settings', function(req, res) {
+  var body = req.body;
+  if (!body.filename) return res.status(400).json({ error: 'filename noetig' });
+  if (!config.file_settings) config.file_settings = {};
+  var f = config.file_settings[body.filename] || {};
+  if (body.duration_ms !== undefined && body.duration_ms !== null && body.duration_ms !== '') {
+    f.duration_ms = parseInt(body.duration_ms);
+  } else if (body.duration_ms === null || body.duration_ms === '') {
+    delete f.duration_ms;
+  }
+  if (body.display_name !== undefined && body.display_name !== null && body.display_name !== '') {
+    f.display_name = String(body.display_name);
+  } else if (body.display_name === null || body.display_name === '') {
+    delete f.display_name;
+  }
+  if (Object.keys(f).length === 0) {
+    delete config.file_settings[body.filename];
+  } else {
+    config.file_settings[body.filename] = f;
+  }
+  saveConfig();
+  log('INFO', 'Datei-Settings: ' + body.filename + ' -> ' + JSON.stringify(f));
+  res.json({ ok: true, settings: f });
 });
 
 // =============================================
@@ -457,11 +494,13 @@ function broadcast(data) {
 
 function triggerOverlay(file, type, source, user) {
   var s = config.settings || {};
+  var fs_cfg = (config.file_settings || {})[file] || {};
+  var dur = fs_cfg.duration_ms || (type === 'video' ? (s.video_duration_override_ms || 5000) : null);
   broadcast({
     type: 'play', file: file, mediaType: type, source: source, user: user || 'System',
     volume: type === 'video' ? (s.video_volume || 0.5) : (s.sound_volume || 0.8),
     allowOverlap: s.allow_overlap || false, maxQueue: s.max_queue_size || 10,
-    videoDurationOverride: s.video_duration_override_ms || 5000
+    durationOverride: dur
   });
   log('INFO', 'Trigger: ' + type + ' "' + file + '" von ' + user + ' (' + source + ')');
 }
