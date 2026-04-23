@@ -143,7 +143,13 @@
         </div>
         <div class="cred-row">
           <div class="fg">
-            <label>Bot-Token <a href="https://twitchtokengenerator.com/" target="_blank">(hier erstellen)</a></label>
+            <label>Bot Account Name</label>
+            <input type="text" id="crBot" placeholder="dein_bot_account_name">
+          </div>
+        </div>
+        <div class="cred-row">
+          <div class="fg">
+            <label>Bot OAuth Token <a href="https://twitchtokengenerator.com/" target="_blank">(hier erstellen)</a></label>
             <input type="password" class="pw" id="crTok" placeholder="oauth:xxxxxxxxxxxx">
           </div>
           <div class="toggle-vis" onclick="togglePw('crTok')" title="Sichtbar machen">&#128065;</div>
@@ -231,6 +237,19 @@
   <!-- ====== QUEUE ====== -->
   <div class="tc" id="t-queue">
     <div class="card">
+      <h3>Freigegebene Artists <span class="sub">Nur freigegebene Kuenstler werden aus Chat abgespielt</span></h3>
+      <p style="font-size:12px;color:var(--dm);margin-bottom:14px">Sobald mindestens ein Artist eingetragen ist, werden <strong>nur noch diese</strong> aus Chat abgespielt (!ytlink). Ohne Eintraege sind alle erlaubt. Admin-Trigger im Dashboard sind immer freigeschaltet.</p>
+      <div class="fr">
+        <div class="fg">
+          <label>Artist hinzufuegen</label>
+          <input type="text" id="wlArtist" placeholder="z.B. Eminem" onkeydown="if(event.key==='Enter')addWhitelistArtist()">
+        </div>
+        <div><button class="btn bp" onclick="addWhitelistArtist()">Hinzufuegen</button></div>
+      </div>
+      <div id="wlList" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:4px"></div>
+      <div class="empty" id="wlEmpty">Keine Artists freigegeben (alle erlaubt). Fuege Artists hinzu um zu filtern.</div>
+    </div>
+    <div class="card">
       <h3>Warteschlange <span id="qCount" style="font-weight:400;color:var(--dm);font-size:12px"></span></h3>
       <p style="font-size:12px;color:var(--dm);margin-bottom:14px">Live-Anzeige der aktuellen Overlay-Queue. Aktualisiert automatisch alle 2 Sekunden.</p>
       <div style="display:flex;gap:10px;margin-bottom:16px">
@@ -266,6 +285,19 @@
         <div class="si">
           <label style="margin-bottom:8px">Sounds uebereinander</label>
           <div style="display:flex;align-items:center;gap:10px"><div class="tog" id="sOv" onclick="this.classList.toggle('on')"></div><span style="font-size:13px;color:var(--dm)">Gleichzeitiges Abspielen</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Chat Benachrichtigungen <span class="sub">Bot schreibt automatisch in den Chat</span></h3>
+      <div class="sgrid">
+        <div class="si">
+          <label style="margin-bottom:8px">Song-Info bei Wechsel</label>
+          <div style="display:flex;align-items:center;gap:10px"><div class="tog" id="sNP" onclick="this.classList.toggle('on')"></div><span style="font-size:13px;color:var(--dm)">Bot postet Artist + Titel bei jedem Songwechsel</span></div>
+        </div>
+        <div class="si">
+          <label style="margin-bottom:8px">!queue Command</label>
+          <div style="display:flex;align-items:center;gap:10px"><div class="tog" id="sQE" onclick="this.classList.toggle('on')"></div><span style="font-size:13px;color:var(--dm)">Viewer koennen aktuelle Queue abfragen</span></div>
         </div>
       </div>
       <div style="margin-top:20px"><button class="btn bp" onclick="saveSet()">Speichern</button></div>
@@ -325,7 +357,10 @@
       <div class="fg"><label>Link ID</label><input type="text" id="lmId" readonly style="opacity:.6"></div>
     </div>
     <div class="fr">
-      <div class="fg"><label>Anzeigename</label><input type="text" id="lmDisp" placeholder="Titel des Tracks / Videos"></div>
+      <div class="fg"><label>Anzeigename / Titel</label><input type="text" id="lmDisp" placeholder="Titel des Tracks / Videos"></div>
+    </div>
+    <div class="fr">
+      <div class="fg"><label>Artist / Kuenstler</label><input type="text" id="lmArtist" placeholder="z.B. Eminem"></div>
     </div>
     <div class="fr">
       <div class="fg">
@@ -367,6 +402,7 @@ async function loadCreds(){
   try{
     const d=await(await fetch(A+'/api/credentials')).json();
     if(d.masked.twitch_channel) document.getElementById('crCh').value=d.masked.twitch_channel;
+    if(d.masked.twitch_bot_username) document.getElementById('crBot').value=d.masked.twitch_bot_username;
     if(d.masked.twitch_bot_token) document.getElementById('crTok').value=d.masked.twitch_bot_token;
     await refreshTwitchStatus();
   }catch(e){}
@@ -376,6 +412,7 @@ async function saveCreds(){
   try{
     const body={
       twitch_channel: document.getElementById('crCh').value.trim(),
+      twitch_bot_username: document.getElementById('crBot').value.trim(),
       twitch_bot_token: document.getElementById('crTok').value.trim()
     };
     if(!body.twitch_channel)return toast('Kanalname fehlt','err');
@@ -521,6 +558,7 @@ function openEditLinkModal(linkId){
   if(!link)return;
   document.getElementById('lmId').value=linkId;
   document.getElementById('lmDisp').value=link.title||'';
+  document.getElementById('lmArtist').value=link.artist||'';
   document.getElementById('lmDur').value=(link.duration_ms!=null)?link.duration_ms:'';
   document.getElementById('linkEditModal').classList.remove('hidden');
 }
@@ -528,7 +566,7 @@ function closeLinkEditModal(){document.getElementById('linkEditModal').classList
 async function saveLinkSettings(){
   if(!editLinkId)return;
   try{
-    var r=await fetch(A+'/api/links/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({link_id:editLinkId,duration_ms:document.getElementById('lmDur').value||null,display_name:document.getElementById('lmDisp').value.trim()||null})});
+    var r=await fetch(A+'/api/links/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({link_id:editLinkId,duration_ms:document.getElementById('lmDur').value||null,display_name:document.getElementById('lmDisp').value.trim()||null,artist:document.getElementById('lmArtist').value.trim()||null})});
     var d=await r.json();
     if(r.ok){toast('Gespeichert','ok');closeLinkEditModal();await loadMedia();await loadCfg();}
     else toast(d.error||'Fehler','err');
@@ -593,7 +631,20 @@ async function loadCfg(){try{config=await(await fetch(A+'/api/config')).json();r
 function renderCmds(){
   const cmds=config.chat_commands||{},keys=Object.keys(cmds);
   document.getElementById('cE').style.display=keys.length?'none':'block';
-  document.getElementById('cL').innerHTML=keys.map(k=>{var t=cmds[k].type==='video'?'Video':cmds[k].type==='link'?'Link':'Sound';return `<li class="citem"><span class="cn">${esc(k)}</span><span class="cf">${esc(cmds[k].file)}</span><span class="ct">${t}</span><button class="btn bd sm bi" onclick="delCmd('${esc(k)}')" title="Loeschen">&#10005;</button></li>`;}).join('');
+  document.getElementById('cL').innerHTML=keys.map(function(k){
+    var cmd=cmds[k];
+    var t=cmd.type==='video'?'Video':cmd.type==='link'?'Link':'Sound';
+    var desc=esc(cmd.file);
+    if(cmd.type==='link'){
+      var link=(config.links||{})[cmd.file];
+      if(link){var parts=[];if(link.artist)parts.push(esc(link.artist));if(link.title)parts.push(esc(link.title));desc=parts.length?parts.join(' - '):esc(cmd.file);}
+    }else if(cmd.type==='video'){
+      var fs_cfg=(config.file_settings||{})[cmd.file]||{};
+      desc=fs_cfg.display_name?esc(fs_cfg.display_name):esc(cmd.file);
+    }
+    return '<li class="citem"><span class="cn">'+esc(k)+'</span><span class="cf">'+desc+'</span><span class="ct">'+t+'</span><button class="btn bd sm bi" onclick="delCmd(\''+esc(k)+'\')" title="Loeschen">&#10005;</button></li>';
+  }).join('');
+  renderWhitelist();
 }
 
 async function addCmd(){
@@ -623,10 +674,12 @@ function applySet(){
   document.getElementById('rvV').textContent=Math.round((s.video_volume||0.5)*100)+'%';
   document.getElementById('sVD').value=s.video_duration_override_ms||5000;
   const ov=document.getElementById('sOv');s.allow_overlap?ov.classList.add('on'):ov.classList.remove('on');
+  const np=document.getElementById('sNP');s.chat_now_playing?np.classList.add('on'):np.classList.remove('on');
+  const qe=document.getElementById('sQE');s.chat_queue_enabled?qe.classList.add('on'):qe.classList.remove('on');
 }
 
 async function saveSet(){
-  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({command_prefix:document.getElementById('sPfx').value||'!',max_queue_size:parseInt(document.getElementById('sQ').value)||10,sound_volume:parseFloat(document.getElementById('sVS').value)||0.8,video_volume:parseFloat(document.getElementById('sVV').value)||0.5,video_duration_override_ms:parseInt(document.getElementById('sVD').value)||5000,allow_overlap:document.getElementById('sOv').classList.contains('on')})});toast('Gespeichert','ok');}catch(e){toast('Fehler','err');}
+  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({command_prefix:document.getElementById('sPfx').value||'!',max_queue_size:parseInt(document.getElementById('sQ').value)||10,sound_volume:parseFloat(document.getElementById('sVS').value)||0.8,video_volume:parseFloat(document.getElementById('sVV').value)||0.5,video_duration_override_ms:parseInt(document.getElementById('sVD').value)||5000,allow_overlap:document.getElementById('sOv').classList.contains('on'),chat_now_playing:document.getElementById('sNP').classList.contains('on'),chat_queue_enabled:document.getElementById('sQE').classList.contains('on')})});toast('Gespeichert','ok');await loadCfg();}catch(e){toast('Fehler','err');}
 }
 
 function updateSelects(){
@@ -695,6 +748,37 @@ async function loadQueue(){
 async function queueSkip(){try{await fetch(A+'/api/queue/skip',{method:'POST'});toast('Skip','ok');}catch(e){toast('Fehler','err');}}
 async function queueClear(){try{await fetch(A+'/api/queue/clear',{method:'POST'});toast('Queue geleert','inf');}catch(e){toast('Fehler','err');}}
 async function queueStop(){try{await fetch(A+'/api/queue/stop',{method:'POST'});toast('Alles gestoppt','inf');}catch(e){toast('Fehler','err');}}
+
+// ---- Artist Whitelist ----
+function renderWhitelist(){
+  var wl=(config.settings||{}).whitelist_artists||[];
+  var list=document.getElementById('wlList');
+  var empty=document.getElementById('wlEmpty');
+  if(!list||!empty)return;
+  if(wl.length===0){list.innerHTML='';empty.style.display='block';}
+  else{
+    empty.style.display='none';
+    list.innerHTML=wl.map(function(a){
+      var safe=esc(a).replace(/'/g,"’");
+      return '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--sf2);border:1px solid var(--gn);border-radius:var(--r);padding:6px 12px;font-size:13px;color:var(--gn)">'+esc(a)+'<button class="btn bd sm bi" onclick="removeWhitelistArtist(\''+safe+'\')" title="Entfernen">&#10005;</button></span>';
+    }).join('');
+  }
+}
+
+async function addWhitelistArtist(){
+  var name=document.getElementById('wlArtist').value.trim();
+  if(!name)return toast('Artist eingeben!','err');
+  var wl=(config.settings||{}).whitelist_artists||[];
+  if(wl.some(function(a){return a.toLowerCase()===name.toLowerCase();}))return toast('Bereits freigegeben','inf');
+  wl.push(name);
+  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({whitelist_artists:wl})});document.getElementById('wlArtist').value='';toast(name+' freigegeben','ok');await loadCfg();}catch(e){toast('Fehler','err');}
+}
+
+async function removeWhitelistArtist(name){
+  var wl=(config.settings||{}).whitelist_artists||[];
+  wl=wl.filter(function(a){return a!==name;});
+  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({whitelist_artists:wl})});toast(name+' entfernt','inf');await loadCfg();}catch(e){toast('Fehler','err');}
+}
 </script>
 </body>
 </html>

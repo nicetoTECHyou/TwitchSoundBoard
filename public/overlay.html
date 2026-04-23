@@ -239,6 +239,8 @@
     // =============================================
     function getItemLabel(item) {
       if (!item) return '';
+      if (item.artist && item.title) return item.artist + ' - ' + item.title;
+      if (item.title) return item.title;
       if (item.embedType) return '[' + item.embedType + '] ' + item.videoId;
       return item.file || '';
     }
@@ -250,8 +252,8 @@
           type: 'queue_state',
           state: {
             isPlaying: isPlaying,
-            current: currentItem ? { file: currentItem.file, mediaType: currentItem.mediaType, embedType: currentItem.embedType, videoId: currentItem.videoId, user: currentItem.user, label: getItemLabel(currentItem) } : null,
-            queue: queue.map(function(item) { return { file: item.file, mediaType: item.mediaType, embedType: item.embedType, videoId: item.videoId, user: item.user, label: getItemLabel(item) }; })
+            current: currentItem ? { file: currentItem.file, mediaType: currentItem.mediaType, embedType: currentItem.embedType, videoId: currentItem.videoId, user: currentItem.user, title: currentItem.title, artist: currentItem.artist, label: getItemLabel(currentItem) } : null,
+            queue: queue.map(function(item) { return { file: item.file, mediaType: item.mediaType, embedType: item.embedType, videoId: item.videoId, user: item.user, title: item.title, artist: item.artist, label: getItemLabel(item) }; })
           }
         }));
       } catch (e) {}
@@ -312,7 +314,7 @@
       skipCurrent = false;
       var item = queue.shift();
       currentItem = item;
-      var label = item.embedType ? ('[' + item.embedType + '] ' + item.videoId) : item.file;
+      var label = getItemLabel(item);
       dbg('> Spiele: "' + label + '" [Q: ' + queue.length + ']');
       reportQueueState();
       try {

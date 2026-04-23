@@ -34,7 +34,7 @@ function loadConfig() {
     config = {
       chat_commands: {},
       links: {},
-      settings: { allow_overlap: false, max_queue_size: 10, sound_volume: 0.8, video_volume: 0.5, command_prefix: '!', video_duration_override_ms: 5000 }
+      settings: { allow_overlap: false, max_queue_size: 10, sound_volume: 0.8, video_volume: 0.5, command_prefix: '!', video_duration_override_ms: 5000, chat_now_playing: false, chat_queue_enabled: false }
     };
     saveConfig();
   }
@@ -115,6 +115,7 @@ async function importYouTubeEmbed(url) {
     link_type: 'yt_embed',
     video_id: videoId,
     title: title,
+    artist: '',
     original_url: url,
     duration_ms: 0
   };
@@ -244,6 +245,7 @@ app.put('/api/links/settings', function(req, res) {
   if (body.duration_ms !== undefined && body.duration_ms !== null && body.duration_ms !== '') { l.duration_ms = parseInt(body.duration_ms); }
   else if (body.duration_ms === null || body.duration_ms === '') { delete l.duration_ms; }
   if (body.display_name !== undefined && body.display_name !== null && body.display_name !== '') { l.title = String(body.display_name); }
+  if (body.artist !== undefined) { l.artist = typeof body.artist === 'string' ? body.artist : ''; }
   saveConfig(); log('INFO', 'Link-Settings: ' + body.link_id); res.json({ ok: true });
 });
 
@@ -319,6 +321,45 @@ app.put('/api/credentials', function(req, res) {
 });
 
 // =============================================
+// Chat Helpers
+// =============================================
+function sendChat(msg) {
+  try {
+    var creds = loadCredentials();
+    if (chatClient && creds.twitch_channel && msg) {
+      chatClient.say('#' + creds.twitch_channel, msg);
+      log('INFO', 'Chat: ' + msg);
+    }
+  } catch (e) {}
+}
+
+function getItemDisplay(item) {
+  if (!item) return '';
+  if (item.artist && item.title) return item.artist + ' - ' + item.title;
+  if (item.title) return item.title;
+  if (item.embedType) return '[' + item.embedType + '] ' + item.videoId;
+  return item.file || '';
+}
+
+// Song-Change Detection
+var lastPlayedLabel = null;
+
+function checkSongChange(state) {
+  var s = config.settings || {};
+  if (!s.chat_now_playing) { lastPlayedLabel = null; return; }
+  if (!state || !state.isPlaying || !state.current) {
+    if (lastPlayedLabel) { lastPlayedLabel = null; }
+    return;
+  }
+  var label = state.current.label || state.current.file || '';
+  if (label && label !== lastPlayedLabel) {
+    lastPlayedLabel = label;
+    var user = state.current.user || 'System';
+    sendChat('Now Playing: ' + label + ' (von ' + user + ')');
+  }
+}
+
+// =============================================
 // Chat Link Handler (!ytlink)
 // =============================================
 async function handleChatLink(url, user) {
@@ -331,10 +372,34 @@ async function handleChatLink(url, user) {
     // Pruefe ob bereits importiert
     if ((config.links || {})[linkId]) {
       var link = config.links[linkId];
-      result = { link_id: linkId, title: link.title, video_id: link.video_id };
+      result = { link_id: linkId, title: link.title, video_id: link.video_id, artist: link.artist || '' };
     } else {
       result = await importYouTubeEmbed(url);
+      result.artist = '';
     }
+
+    // Artist Whitelist Pruefung
+    var whitelist = (config.settings || {}).whitelist_artists || [];
+    var artist = (result.artist || '').trim();
+    if (whitelist.length > 0) {
+      var isWhitelisted = artist && whitelist.some(function(a) { return a.trim().toLowerCase() === artist.toLowerCase(); });
+      if (!isWhitelisted) {
+        log('INFO', 'Chat !ytlink: Blockiert' + (artist ? ' (Artist "' + artist + '" nicht freigegeben)' : ' (kein Artist gesetzt)') + ' von ' + user);
+        // Chat-Nachricht senden
+        try {
+          var creds = loadCredentials();
+          if (chatClient && creds.twitch_channel) {
+            if (!artist) {
+              chatClient.say('#' + creds.twitch_channel, '@' + user + ' Song wurde importiert aber kein Artist eingetragen. Ein Admin muss den Artist eintragen und freigeben.');
+            } else {
+              chatClient.say('#' + creds.twitch_channel, '@' + user + ' Der Artist "' + artist + '" ist nicht freigegeben.');
+            }
+          }
+        } catch (e) {}
+        return;
+      }
+    }
+
     triggerOverlay(result.link_id, 'link', 'chat', user);
     log('INFO', 'Chat !ytlink: "' + result.title + '" von ' + user);
   } catch (e) {
@@ -381,6 +446,31 @@ app.post('/api/twitch/start', function(req, res) {
         // !ytlink <url> – YouTube Video direkt aus Chat abspielen
         if (cmd === prefix + 'ytlink' && rest) {
           handleChatLink(rest, user);
+          return;
+        }
+
+        // !queue – Aktuelle Queue anzeigen
+        if (cmd === prefix + 'queue') {
+          var qs = (config.settings || {}).chat_queue_enabled;
+          if (!qs) { sendChat('@' + user + ' Die Queue-Anzeige ist deaktiviert.'); return; }
+          var st = overlayQueueState;
+          if (!st.isPlaying && (!st.queue || st.queue.length === 0)) {
+            sendChat('@' + user + ' Die Queue ist leer.'); return;
+          }
+          var lines = [];
+          if (st.isPlaying && st.current) {
+            lines.push('Jetzt: ' + getItemDisplay(st.current));
+          }
+          if (st.queue && st.queue.length > 0) {
+            var max = Math.min(st.queue.length, 5);
+            for (var i = 0; i < max; i++) {
+              lines.push('#' + (i + (st.isPlaying ? 2 : 1)) + ' ' + getItemDisplay(st.queue[i]));
+            }
+            if (st.queue.length > 5) {
+              lines.push('... und ' + (st.queue.length - 5) + ' weitere');
+            }
+          }
+          sendChat(lines.join(' | '));
           return;
         }
       }
@@ -466,6 +556,7 @@ if (wss) wss.on('connection', function(ws) {
       var msg = JSON.parse(raw);
       if (msg.type === 'queue_state') {
         overlayQueueState = msg.state || { queue: [], current: null, isPlaying: false };
+        checkSongChange(overlayQueueState);
       }
     } catch (e) {}
   });
@@ -492,6 +583,7 @@ function triggerOverlay(file, type, source, user) {
     broadcast({
       type: 'play', file: file, mediaType: 'link',
       embedType: 'yt_video', videoId: link.video_id,
+      title: link.title || '', artist: link.artist || '',
       source: source, user: user || 'System',
       volume: s.video_volume || 0.5,
       allowOverlap: s.allow_overlap || false, maxQueue: s.max_queue_size || 10,

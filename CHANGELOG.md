@@ -1,4 +1,17 @@
 
+## [0.5.0] – 2026-04-24
+
+### Added
+- **Artist + Titel Anzeige** – Queue und Chat-Commands zeigen jetzt Artist - Titel statt YouTube-IDs. Sounds zeigen weiterhin Dateiname, Videos den Display-Namen.
+- **Artist-Feld fuer Embed Links** – Neues Feld "Artist / Kuenstler" im Link-Bearbeiten-Modal. Kann individuell pro Link gesetzt werden.
+- **Artist Whitelist** – Im Queue-Tab koennen Artists freigegeben werden. Nur freigegebene Artists werden per !ytlink aus Chat abgespielt. Ohne Eintraege sind alle erlaubt. Admin-Trigger sind immer freigeschaltet.
+- **Song-Info bei Wechsel** – Bot postet automatisch Artist + Titel in den Chat wenn sich das laufende Lied aendert (togglebar in Einstellungen).
+- **!queue Command** – Viewer koennen die aktuelle Warteschlange im Chat abfragen (max 5 Eintraege, togglebar).
+- **Bot Account Name** – Eigenes Feld im Twitch-Tab fuer den Bot-Account-Namen (getrennt vom Kanalnamen).
+
+### Changed
+- Commands-Liste zeigt fuer Links: Artist - Titel, fuer Videos: Display-Name, fuer Sounds: Dateiname
+
 ## [0.4.4] – 2026-04-22
 
 ### Fixed
