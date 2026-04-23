@@ -105,6 +105,52 @@
       to   { opacity: 0; transform: translate(-50%,-50%) scale(1.15); }
     }
 
+    /* Schnell-Szene Overlay */
+    #scene-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      z-index: 5;
+      pointer-events: none;
+      transition: background 0.6s ease;
+    }
+    #scene-overlay.active { display: block; }
+    #scene-text {
+      position: absolute;
+      bottom: 60px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.7);
+      text-align: center;
+      white-space: nowrap;
+      padding: 12px 32px;
+      background: rgba(0,0,0,0.4);
+      border-radius: 12px;
+      backdrop-filter: blur(6px);
+      animation: sceneTextIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      max-width: 90%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    @keyframes sceneTextIn {
+      0% { opacity: 0; transform: translateX(-50%) translateY(20px) scale(0.9); }
+      100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+    }
+    #scene-name-tag {
+      position: absolute;
+      top: 14px; right: 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 6px;
+    }
+
   </style>
 </head>
 <body>
@@ -113,6 +159,11 @@
       <video id="video-player" playsinline></video>
     </div>
     <div id="yt-embed-visible"></div>
+  </div>
+
+  <div id="scene-overlay">
+    <div id="scene-name-tag"></div>
+    <div id="scene-text"></div>
   </div>
 
   <div id="audio-indicator"></div>
@@ -233,6 +284,7 @@
       if (data.type === 'queue_skip') return handleSkip();
       if (data.type === 'queue_clear') return handleClear();
       if (data.type === 'queue_stop') return handleStop();
+      if (data.type === 'scene_changed') return handleSceneChanged(data);
     }
 
     // =============================================
@@ -526,6 +578,43 @@
         videoContainer.style.display = 'none';
         videoPlayer.pause(); videoPlayer.removeAttribute('src'); videoPlayer.load();
       }, 300);
+    }
+
+    // =============================================
+    // Schnell-Szene Handler
+    // =============================================
+    var sceneOverlay = document.getElementById('scene-overlay');
+    var sceneTextEl = document.getElementById('scene-text');
+    var sceneNameTag = document.getElementById('scene-name-tag');
+    var sceneTimeout = null;
+
+    function handleSceneChanged(data) {
+      clearTimeout(sceneTimeout);
+      if (!data.sceneName) {
+        // Szene deaktiviert
+        sceneOverlay.classList.remove('active');
+        sceneOverlay.style.background = '';
+        sceneTextEl.textContent = '';
+        sceneNameTag.textContent = '';
+        dbg('Szene deaktiviert');
+        return;
+      }
+      sceneOverlay.classList.add('active');
+      sceneOverlay.style.background = data.bg || '';
+      sceneTextEl.textContent = data.text || data.sceneName;
+      sceneNameTag.textContent = data.sceneName;
+      dbg('Szene: ' + data.sceneName + (data.text ? ' (' + data.text + ')' : ''));
+
+      // Auto-Fade bei duration
+      if (data.duration && data.duration > 0) {
+        sceneTimeout = setTimeout(function() {
+          sceneOverlay.classList.remove('active');
+          sceneOverlay.style.background = '';
+          sceneTextEl.textContent = '';
+          sceneNameTag.textContent = '';
+          dbg('Szene auto-fade: ' + data.sceneName);
+        }, data.duration);
+      }
     }
 
     // =============================================

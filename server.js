@@ -616,6 +616,13 @@ app.post('/api/twitch/start', function(req, res) {
           castVote(user, 'not');
           return;
         }
+
+        // !scene – Schnell-Szene wechseln
+        if (cmd === prefix + 'scene') {
+          if (!rest) { sendChat('@' + user + ' Usage: ' + prefix + 'scene <Name>'); return; }
+          handleSceneCommand(user, rest);
+          return;
+        }
       }
     });
     chatClient.on('error', function(err) { log('ERROR', 'Twitch: ' + (err.message || JSON.stringify(err))); });
@@ -629,6 +636,115 @@ app.post('/api/twitch/stop', function(req, res) {
     if (chatClient) { chatClient.disconnect().then(function() { chatClient = null; twitchRunning = false; log('INFO', 'Twitch gestoppt'); res.json({ ok: true }); }).catch(function(e) { chatClient = null; twitchRunning = false; res.json({ ok: true }); }); }
     else { twitchRunning = false; res.json({ ok: true }); }
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// =============================================
+// Schnell-Szenen (Quick Scenes)
+// =============================================
+var activeScene = null;
+
+function getScenes() {
+  return config.quick_scenes || {};
+}
+
+// !scene – Schnell-Szene wechseln (Chat-Command)
+function handleSceneCommand(user, sceneName) {
+  var scenes = getScenes();
+  if (!scenes || Object.keys(scenes).length === 0) {
+    sendChat('@' + user + ' Keine Schnell-Szenen konfiguriert.');
+    return;
+  }
+  // Case-insensitive Suche
+  var found = null;
+  for (var key in scenes) {
+    if (key.toLowerCase() === sceneName.toLowerCase()) { found = key; break; }
+  }
+  if (!found) {
+    var names = Object.keys(scenes).join(', ');
+    sendChat('@' + user + ' Szene "' + sceneName + '" nicht gefunden. Verfuegbar: ' + names);
+    return;
+  }
+  activeScene = found;
+  var sc = scenes[found];
+  broadcast({
+    type: 'scene_changed',
+    sceneName: found,
+    text: sc.text || '',
+    bg: sc.bg || '',
+    duration: sc.duration || 0
+  });
+  log('INFO', 'Chat !scene: ' + user + ' -> "' + found + '"');
+  var label = sc.text ? found + ': ' + sc.text : found;
+  sendChat('Szene gewechselt: ' + label);
+}
+
+// =============================================
+// API – Schnell-Szenen CRUD
+// =============================================
+app.get('/api/scenes', function(req, res) {
+  var scenes = getScenes();
+  res.json({ scenes: scenes, active: activeScene });
+});
+
+app.post('/api/scenes', function(req, res) {
+  var body = req.body;
+  var name = (body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Name fehlt' });
+  if (!config.quick_scenes) config.quick_scenes = {};
+  config.quick_scenes[name] = {
+    text: (body.text || '').trim(),
+    bg: (body.bg || '').trim(),
+    duration: parseInt(body.duration) || 0
+  };
+  saveConfig();
+  broadcast({ type: 'config_reloaded', config: config });
+  log('INFO', 'Szene erstellt: "' + name + '"');
+  res.json({ ok: true });
+});
+
+app.put('/api/scenes/:oldName', function(req, res) {
+  var oldName = decodeURIComponent(req.params.oldName);
+  var body = req.body;
+  var newName = (body.name || '').trim();
+  if (!newName) return res.status(400).json({ error: 'Name fehlt' });
+  if (!config.quick_scenes) config.quick_scenes = {};
+  // Wenn Name geaendert: alten entfernen
+  if (oldName !== newName && config.quick_scenes[oldName]) {
+    delete config.quick_scenes[oldName];
+  }
+  config.quick_scenes[newName] = {
+    text: (body.text || '').trim(),
+    bg: (body.bg || '').trim(),
+    duration: parseInt(body.duration) || 0
+  };
+  if (activeScene === oldName) activeScene = newName;
+  saveConfig();
+  broadcast({ type: 'config_reloaded', config: config });
+  log('INFO', 'Szene bearbeitet: "' + newName + '"');
+  res.json({ ok: true });
+});
+
+app.delete('/api/scenes/:name', function(req, res) {
+  var name = decodeURIComponent(req.params.name);
+  if (!config.quick_scenes || !config.quick_scenes[name]) return res.status(404).json({ error: 'Szene nicht gefunden' });
+  delete config.quick_scenes[name];
+  if (activeScene === name) { activeScene = null; broadcast({ type: 'scene_changed', sceneName: null, text: '', bg: '', duration: 0 }); }
+  saveConfig();
+  broadcast({ type: 'config_reloaded', config: config });
+  log('INFO', 'Szene geloescht: "' + name + '"');
+  res.json({ ok: true });
+});
+
+app.post('/api/scenes/activate', function(req, res) {
+  var name = (req.body.name || '').trim();
+  if (!name) { activeScene = null; broadcast({ type: 'scene_changed', sceneName: null, text: '', bg: '', duration: 0 }); return res.json({ ok: true }); }
+  var scenes = getScenes();
+  if (!scenes[name]) return res.status(404).json({ error: 'Szene nicht gefunden' });
+  activeScene = name;
+  var sc = scenes[name];
+  broadcast({ type: 'scene_changed', sceneName: name, text: sc.text || '', bg: sc.bg || '', duration: sc.duration || 0 });
+  log('INFO', 'Szene aktiviert (Admin): "' + name + '"');
+  res.json({ ok: true });
 });
 
 // =============================================

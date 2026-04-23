@@ -105,6 +105,14 @@
     .modal .fr{margin-bottom:14px}
     .modal .dur-info{font-size:11px;color:var(--dm);margin-top:4px}
     .modal .dur-info em{color:var(--ac);font-style:normal}
+
+    .scene-item{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:8px;cursor:pointer;transition:.15s}
+    .scene-item:hover{background:var(--bd);border-color:var(--ac)}
+    .scene-item.active{border-color:var(--gn);background:rgba(0,184,148,.08)}
+    .scene-name{flex:1;font-size:14px;font-weight:500}
+    .scene-preview{font-size:12px;color:var(--dm);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .scene-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:3px 10px;border-radius:12px;background:var(--gn);color:#fff;font-weight:600}
+    .scene-color{width:16px;height:16px;border-radius:4px;border:1px solid var(--bd);flex-shrink:0}
   </style>
 </head>
 <body>
@@ -120,6 +128,7 @@
     <div class="tab" data-t="commands">Chat-Commands</div>
     <div class="tab on" data-t="twitch">Twitch</div>
     <div class="tab" data-t="queue">Queue</div>
+    <div class="tab" data-t="scenes">Szenen</div>
     <div class="tab" data-t="settings">Einstellungen</div>
     <div class="tab" data-t="obs">OBS</div>
   </div>
@@ -305,6 +314,33 @@
     </div>
   </div>
 
+  <!-- ====== SCENES ====== -->
+  <div class="tc" id="t-scenes">
+    <div class="card">
+      <h3>Schnell-Szenen <span class="sub" id="sceneCount">0 Szenen</span></h3>
+      <p style="font-size:13px;color:var(--dm);margin-bottom:14px">Erstelle benannte Szenen die per <strong>!scene &lt;Name&gt;</strong> im Chat oder per Klick aktiviert werden. Jede Szene zeigt einen Overlay-Text und optional einen Hintergrund auf dem OBS-Overlay.</p>
+
+      <!-- Neuen Szene Button -->
+      <div style="margin-bottom:16px">
+        <button class="btn bp" onclick="openSceneModal()">&#10010; Neue Szene</button>
+        <button class="btn bs" onclick="clearActiveScene()" style="margin-left:8px">&#9632; Szene deaktivieren</button>
+      </div>
+
+      <!-- Scene List -->
+      <div id="sceneList"></div>
+      <div class="empty" id="sceneEmpty">Noch keine Schnell-Szenen erstellt. Klicke auf "Neue Szene" um loszulegen.</div>
+    </div>
+
+    <div class="card">
+      <h3>Chat-Command</h3>
+      <div style="font-size:13px;color:var(--dm);line-height:1.8">
+        <strong>!scene &lt;Name&gt;</strong> &mdash; Wechselt die aktive Szene (case-insensitive).<br>
+        <strong>!scene</strong> &mdash; Zeigt Usage an.<br>
+        Der Bot bestaetigt den Wechsel im Chat und zeigt die verfuegbaren Szenen an wenn der Name nicht gefunden wurde.
+      </div>
+    </div>
+  </div>
+
   <!-- ====== SETTINGS ====== -->
   <div class="tc" id="t-settings">
     <div class="card">
@@ -366,6 +402,35 @@
 
 <div class="toast-wrap" id="toasts"></div>
 <audio id="prev" style="display:none"></audio>
+
+<!-- Scene Modal -->
+<div class="modal-bg hidden" id="sceneModal">
+  <div class="modal">
+    <h3 id="sceneModalTitle">Neue Szene</h3>
+    <div class="fr">
+      <div class="fg"><label>Szenen-Name</label><input type="text" id="scName" placeholder="z.B. Intro, BRB, Hype, Chill"></div>
+    </div>
+    <div class="fr">
+      <div class="fg"><label>Overlay-Text <span style="color:var(--dm)">(im OBS sichtbar)</span></label><input type="text" id="scText" placeholder="z.B. Kaffeepause - bin gleich wieder!"></div>
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label>Hintergrundfarbe / Gradient <span style="color:var(--dm)">(CSS)</span></label>
+        <input type="text" id="scBg" placeholder="z.B. rgba(255,0,0,0.3) oder linear-gradient(135deg, #667eea, #764ba2)">
+      </div>
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label>Auto-Fade nach (ms) <span style="color:var(--dm)">(0 = dauerhaft)</span></label>
+        <input type="number" id="scDur" placeholder="0 = bleibt bis naechste Szene" min="0" max="600000" step="1000">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn bp" onclick="saveScene()">Speichern</button>
+      <button class="btn bs" onclick="closeSceneModal()">Abbrechen</button>
+    </div>
+  </div>
+</div>
 
 <!-- Edit Modal (Datei) -->
 <div class="modal-bg hidden" id="editModal">
@@ -671,7 +736,7 @@ async function importFromUrl(){
 }
 
 // ---- Config ----
-async function loadCfg(){try{config=await(await fetch(A+'/api/config')).json();renderCmds();applySet();}catch(e){}}
+async function loadCfg(){try{config=await(await fetch(A+'/api/config')).json();renderCmds();applySet();renderScenes();loadActiveScene();}catch(e){}}
 
 function renderCmds(){
   const cmds=config.chat_commands||{},keys=Object.keys(cmds);
@@ -891,6 +956,112 @@ async function importLinks(event){
     else toast(d.error||'Fehler','err');
   }catch(e){toast('Ungueltige Datei','err');}
   event.target.value='';
+}
+
+// ---- Schnell-Szenen ----
+var editingSceneOld=null;
+function openSceneModal(oldName){
+  editingSceneOld=oldName||null;
+  document.getElementById('sceneModalTitle').textContent=oldName?'Szene bearbeiten':'Neue Szene';
+  if(oldName){
+    var sc=(config.quick_scenes||{})[oldName];
+    if(!sc)return;
+    document.getElementById('scName').value=oldName;
+    document.getElementById('scText').value=sc.text||'';
+    document.getElementById('scBg').value=sc.bg||'';
+    document.getElementById('scDur').value=sc.duration||'';
+  }else{
+    document.getElementById('scName').value='';
+    document.getElementById('scText').value='';
+    document.getElementById('scBg').value='';
+    document.getElementById('scDur').value='0';
+  }
+  document.getElementById('sceneModal').classList.remove('hidden');
+}
+function closeSceneModal(){document.getElementById('sceneModal').classList.add('hidden');editingSceneOld=null;}
+document.getElementById('sceneModal').addEventListener('click',function(e){if(e.target===this)closeSceneModal();});
+
+async function saveScene(){
+  var name=document.getElementById('scName').value.trim();
+  if(!name)return toast('Name eingeben!','err');
+  var body={
+    name:name,
+    text:document.getElementById('scText').value.trim(),
+    bg:document.getElementById('scBg').value.trim(),
+    duration:parseInt(document.getElementById('scDur').value)||0
+  };
+  try{
+    var url=editingSceneOld?A+'/api/scenes/'+encodeURIComponent(editingSceneOld):A+'/api/scenes';
+    var method=editingSceneOld?'PUT':'POST';
+    var r=await fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d=await r.json();
+    if(r.ok){toast(editingSceneOld?'Szene aktualisiert':'Szene "'+name+'" erstellt','ok');closeSceneModal();await loadCfg();renderScenes();}
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Fehler','err');}
+}
+
+async function deleteScene(name){
+  if(!confirm('Szene "'+name+'" loeschen?'))return;
+  try{
+    var r=await fetch(A+'/api/scenes/'+encodeURIComponent(name),{method:'DELETE'});
+    var d=await r.json();
+    if(r.ok){toast('Geloescht','ok');await loadCfg();renderScenes();}
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Fehler','err');}
+}
+
+async function activateScene(name){
+  try{
+    var r=await fetch(A+'/api/scenes/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
+    var d=await r.json();
+    if(r.ok){toast('Szene: '+name,'ok');renderScenes();}
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Fehler','err');}
+}
+
+async function clearActiveScene(){
+  try{
+    await fetch(A+'/api/scenes/activate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:''})});
+    toast('Szene deaktiviert','inf');renderScenes();
+  }catch(e){toast('Fehler','err');}
+}
+
+function renderScenes(){
+  var scenes=config.quick_scenes||{};
+  var keys=Object.keys(scenes);
+  var list=document.getElementById('sceneList');
+  var empty=document.getElementById('sceneEmpty');
+  var count=document.getElementById('sceneCount');
+  // Aktive Szene vom Server holen (spaeter via API, vorerst config)
+  count.textContent=keys.length?'('+keys.length+')':'';
+  if(!keys.length){list.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  list.innerHTML=keys.map(function(name){
+    var sc=scenes[name];
+    var isActive=name===activeSceneName;
+    var colorDot=sc.bg?'<div class="scene-color" style="background:'+esc(sc.bg)+'" title="'+esc(sc.bg)+'"></div>':'';
+    var durInfo=sc.duration>0?'<span style="font-size:11px;color:var(--dm)">'+Math.round(sc.duration/1000)+'s</span>':'';
+    return '<div class="scene-item'+(isActive?' active':'')+'">' +
+      colorDot +
+      '<span class="scene-name">'+esc(name)+'</span>' +
+      '<span class="scene-preview">'+(sc.text?esc(sc.text):'<em>kein Text</em>')+'</span>' +
+      durInfo +
+      (isActive?'<span class="scene-badge">AKTIV</span>':'') +
+      '<div class="scene-acts" style="display:flex;gap:4px;margin-left:8px">' +
+      '<button class="btn bg sm" onclick="activateScene(\''+esc(name).replace(/'/g,"\\'")+'\')" title="Aktivieren">&#9654;</button>' +
+      '<button class="btn bp sm bi" onclick="openSceneModal(\''+esc(name).replace(/'/g,"\\'")+'\')" title="Bearbeiten">&#9998;</button>' +
+      '<button class="btn bd sm bi" onclick="deleteScene(\''+esc(name).replace(/'/g,"\\'")+'\')" title="Loeschen">&#10005;</button>' +
+      '</div></div>';
+  }).join('');
+}
+
+var activeSceneName='';
+async function loadActiveScene(){
+  try{
+    var d=await(await fetch(A+'/api/scenes')).json();
+    activeSceneName=d.active||'';
+    renderScenes();
+  }catch(e){}
 }
 </script>
 </body>
