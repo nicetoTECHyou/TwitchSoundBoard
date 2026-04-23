@@ -1,4 +1,16 @@
 
+## [0.6.0] – 2026-04-24
+
+### Added
+- **Hot or Not Voting System** – Viewer koennen waehrend ein YouTube Track laeuft mit !Hot oder !Not abstimmen. Erreicht eine Seite das Threshold (standardmaessig 5), wird der Track behalten (Hot) oder geloescht + geskippt (Not). Jeder User hat 1 Stimme pro Track.
+- **Animierte Vote-Bar im Overlay** – Unten am Bildschirmrand: animierte Fortschrittsbalken fuer Hot/Not mit Slide-In/Out Animationen und Ergebnis-Overlay.
+- **Bot Vote-Prompt** – Bei aktiviertem Voting postet der Bot automatisch: "TRACKNAME - Votet !Hot oder !Not um ueber die Zukunft des Liedes zu entscheiden"
+- **Voting Threshold einstellbar** – Beliebig viele Stimmen (1-50) im Admin einstellbar.
+- **Export / Import fuer Embed Links** – Alle Embed Links + zugehoerige Commands als JSON exportieren und importieren. Nuetzlich bei Versionswechsel.
+
+### Changed
+- Chat-Benachrichtigungen aufgeteilt in eigene Settings-Karten
+
 ## [0.5.0] – 2026-04-24
 
 ### Added

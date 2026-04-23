@@ -1,5 +1,5 @@
 // =============================================
-// TwitchSoundBoard – Server v0.5.0
+// TwitchSoundBoard – Server v0.6.0
 // YouTube Embed (kein Download!)
 // =============================================
 
@@ -34,7 +34,7 @@ function loadConfig() {
     config = {
       chat_commands: {},
       links: {},
-      settings: { allow_overlap: false, max_queue_size: 10, sound_volume: 0.8, video_volume: 0.5, command_prefix: '!', video_duration_override_ms: 5000, chat_now_playing: false, chat_queue_enabled: false }
+      settings: { allow_overlap: false, max_queue_size: 10, sound_volume: 0.8, video_volume: 0.5, command_prefix: '!', video_duration_override_ms: 5000, chat_now_playing: false, chat_queue_enabled: false, voting_enabled: false, voting_threshold: 5 }
     };
     saveConfig();
   }
@@ -222,6 +222,48 @@ app.delete('/api/links/:linkId', function(req, res) {
 });
 
 // =============================================
+// API – Export / Import Links
+// =============================================
+app.get('/api/links/export', function(req, res) {
+  try {
+    var links = config.links || {};
+    var cmds = config.chat_commands || {};
+    var data = { version: getVersion(), exported: new Date().toISOString(), links: links, chat_commands: cmds };
+    res.setHeader('Content-Disposition', 'attachment; filename="twitchsoundboard-links-export.json"');
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/links/import', function(req, res) {
+  var body = req.body;
+  if (!body || !body.links) return res.status(400).json({ error: 'Ungueltige Export-Datei' });
+  try {
+    if (!config.links) config.links = {};
+    var imported = 0;
+    for (var id in body.links) {
+      var l = body.links[id];
+      if (l.link_type === 'yt_embed' && l.video_id) {
+        config.links[id] = l;
+        imported++;
+      }
+    }
+    if (body.chat_commands && imported > 0) {
+      if (!config.chat_commands) config.chat_commands = {};
+      for (var cmd in body.chat_commands) {
+        var c = body.chat_commands[cmd];
+        if (c.type === 'link' && config.links[c.file]) {
+          config.chat_commands[cmd] = c;
+        }
+      }
+    }
+    saveConfig();
+    broadcast({ type: 'config_reloaded', config: config });
+    log('INFO', 'Links importiert: ' + imported);
+    res.json({ ok: true, imported: imported });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// =============================================
 // API – File Settings
 // =============================================
 app.put('/api/media/settings', function(req, res) {
@@ -360,6 +402,93 @@ function checkSongChange(state) {
 }
 
 // =============================================
+// Hot or Not Voting System
+// =============================================
+var activeVote = null; // { linkId, videoId, label, hot: {}, not: {}, resolved: false }
+
+function resetVote() {
+  activeVote = null;
+  broadcast({ type: 'vote_reset' });
+}
+
+function startVote(linkId) {
+  var s = config.settings || {};
+  if (!s.voting_enabled) return;
+  var link = (config.links || {})[linkId];
+  if (!link || link.link_type !== 'yt_embed') return;
+
+  var label = getItemDisplay({ artist: link.artist, title: link.title });
+  activeVote = { linkId: linkId, videoId: link.video_id, label: label, hot: {}, not: {}, resolved: false };
+
+  broadcast({
+    type: 'vote_start',
+    linkId: linkId,
+    label: label,
+    threshold: s.voting_threshold || 5
+  });
+
+  // Bot fordert zum Voten auf
+  sendChat(label + ' - Votet !Hot oder !Not um ueber die Zukunft des Liedes zu entscheiden');
+  log('INFO', 'Voting gestartet: ' + label);
+}
+
+function castVote(user, voteType) {
+  if (!activeVote || activeVote.resolved) return;
+  var s = config.settings || {};
+  var threshold = s.voting_threshold || 5;
+  var userId = user.toLowerCase();
+
+  // Doppel-Vote verhindern
+  if (activeVote.hot[userId]) return sendChat('@' + user + ' Du hast bereits fuer Hot gevotet!');
+  if (activeVote.not[userId]) return sendChat('@' + user + ' Du hast bereits fuer Not gevotet!');
+
+  if (voteType === 'hot') {
+    activeVote.hot[userId] = true;
+    log('INFO', 'Vote Hot: ' + user + ' (' + Object.keys(activeVote.hot).length + '/' + threshold + ') fuer ' + activeVote.label);
+  } else {
+    activeVote.not[userId] = true;
+    log('INFO', 'Vote Not: ' + user + ' (' + Object.keys(activeVote.not).length + '/' + threshold + ') fuer ' + activeVote.label);
+  }
+
+  var hotCount = Object.keys(activeVote.hot).length;
+  var notCount = Object.keys(activeVote.not).length;
+
+  broadcast({
+    type: 'vote_update',
+    hot: hotCount,
+    not: notCount,
+    threshold: threshold,
+    label: activeVote.label
+  });
+
+  // Threshold erreicht?
+  if (hotCount >= threshold) {
+    activeVote.resolved = true;
+    sendChat(activeVote.label + ' - Das Volk hat gesprochen! HOT mit ' + hotCount + ' Stimmen! Der Track bleibt!');
+    broadcast({ type: 'vote_result', result: 'hot', hot: hotCount, not: notCount, threshold: threshold, label: activeVote.label });
+    log('INFO', 'Voting Ergebnis: HOT - ' + activeVote.label);
+    setTimeout(resetVote, 5000);
+  } else if (notCount >= threshold) {
+    activeVote.resolved = true;
+    sendChat(activeVote.label + ' - Das Volk hat gesprochen! NOT mit ' + notCount + ' Stimmen! Der Track fliegt!');
+    broadcast({ type: 'vote_result', result: 'not', hot: hotCount, not: notCount, threshold: threshold, label: activeVote.label });
+    log('INFO', 'Voting Ergebnis: NOT - ' + activeVote.label);
+
+    // Track aus Datenbank entfernen und skippen
+    var linkId = activeVote.linkId;
+    if (config.links && config.links[linkId]) {
+      delete config.links[linkId];
+      for (var k in (config.chat_commands || {})) { if (config.chat_commands[k].file === linkId) delete config.chat_commands[k]; }
+      saveConfig();
+      broadcast({ type: 'config_reloaded', config: config });
+      log('INFO', 'Voting NOT: Link geloescht ' + linkId);
+    }
+    broadcast({ type: 'queue_skip' });
+    setTimeout(resetVote, 5000);
+  }
+}
+
+// =============================================
 // Chat Link Handler (!ytlink)
 // =============================================
 async function handleChatLink(url, user) {
@@ -473,6 +602,20 @@ app.post('/api/twitch/start', function(req, res) {
           sendChat(lines.join(' | '));
           return;
         }
+
+        // !hot – Vote Hot
+        if (cmd === prefix + 'hot') {
+          if (!activeVote) { sendChat('@' + user + ' Es laeuft gerade keine Abstimmung.'); return; }
+          castVote(user, 'hot');
+          return;
+        }
+
+        // !not – Vote Not
+        if (cmd === prefix + 'not') {
+          if (!activeVote) { sendChat('@' + user + ' Es laeuft gerade keine Abstimmung.'); return; }
+          castVote(user, 'not');
+          return;
+        }
       }
     });
     chatClient.on('error', function(err) { log('ERROR', 'Twitch: ' + (err.message || JSON.stringify(err))); });
@@ -557,6 +700,17 @@ if (wss) wss.on('connection', function(ws) {
       if (msg.type === 'queue_state') {
         overlayQueueState = msg.state || { queue: [], current: null, isPlaying: false };
         checkSongChange(overlayQueueState);
+
+        // Voting starten wenn neuer Link spielt
+        var cur = overlayQueueState.current;
+        if (overlayQueueState.isPlaying && cur && cur.file && cur.mediaType === 'link') {
+          if (!activeVote || activeVote.linkId !== cur.file) {
+            resetVote();
+            startVote(cur.file);
+          }
+        } else if (!overlayQueueState.isPlaying) {
+          resetVote();
+        }
       }
     } catch (e) {}
   });

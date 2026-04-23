@@ -104,6 +104,106 @@
       from { opacity: 1; transform: translate(-50%,-50%) scale(1); }
       to   { opacity: 0; transform: translate(-50%,-50%) scale(1.15); }
     }
+
+    /* Vote Bar */
+    #vote-bar {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 70%, transparent 100%);
+      padding: 30px 24px 18px;
+      z-index: 100;
+      pointer-events: none;
+      animation: voteSlideIn 0.4s ease-out;
+    }
+    @keyframes voteSlideIn {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes voteSlideOut {
+      from { transform: translateY(0); opacity: 1; }
+      to   { transform: translateY(100%); opacity: 0; }
+    }
+    #vote-bar .vote-title {
+      font: 600 14px/1.4 'Segoe UI', sans-serif;
+      color: #fff;
+      text-align: center;
+      margin-bottom: 10px;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    }
+    #vote-bar .vote-track {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    #vote-bar .vote-side {
+      flex: 1;
+      text-align: center;
+    }
+    #vote-bar .vote-side .vote-label {
+      font: 700 13px/1 'Segoe UI', sans-serif;
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+    }
+    #vote-bar .vote-side.hot .vote-label { color: #ff6b35; }
+    #vote-bar .vote-side.not .vote-label { color: #ff4757; }
+    #vote-bar .vote-bar-inner {
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.15);
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    #vote-bar .vote-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
+      width: 0%;
+    }
+    #vote-bar .hot .vote-fill { background: linear-gradient(90deg, #ff6b35, #ffa502); }
+    #vote-bar .not .vote-fill { background: linear-gradient(90deg, #ff4757, #ff6b81); }
+    #vote-bar .vote-count {
+      font: 600 20px/1 'Segoe UI', sans-serif;
+    }
+    #vote-bar .hot .vote-count { color: #ffa502; }
+    #vote-bar .not .vote-count { color: #ff4757; }
+    #vote-bar .vote-vs {
+      font: 700 16px/1 'Segoe UI', sans-serif;
+      color: rgba(255,255,255,0.4);
+      min-width: 30px;
+      text-align: center;
+    }
+
+    /* Vote Result Overlay */
+    #vote-result {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      text-align: center;
+      padding: 24px;
+      z-index: 101;
+      pointer-events: none;
+      animation: voteSlideIn 0.4s ease-out;
+    }
+    #vote-result .result-text {
+      font: 700 22px/1.4 'Segoe UI', sans-serif;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      padding: 12px 28px;
+      border-radius: 12px;
+      display: inline-block;
+    }
+    #vote-result .result-hot {
+      color: #ffa502;
+      background: rgba(255,165,2,0.15);
+      border: 1px solid rgba(255,165,2,0.3);
+    }
+    #vote-result .result-not {
+      color: #ff4757;
+      background: rgba(255,71,87,0.15);
+      border: 1px solid rgba(255,71,87,0.3);
+    }
   </style>
 </head>
 <body>
@@ -117,6 +217,29 @@
   <div id="audio-indicator"></div>
   <div id="debug-bar"></div>
   <div id="ws-status" class="err">&#11044; Waiting...</div>
+
+  <!-- Vote Bar -->
+  <div id="vote-bar">
+    <div class="vote-title" id="voteTitle">Votet !Hot oder !Not</div>
+    <div class="vote-track">
+      <div class="vote-side hot">
+        <div class="vote-label">HOT</div>
+        <div class="vote-bar-inner"><div class="vote-fill" id="voteHotFill"></div></div>
+        <div class="vote-count" id="voteHotCount">0</div>
+      </div>
+      <div class="vote-vs">VS</div>
+      <div class="vote-side not">
+        <div class="vote-label">NOT</div>
+        <div class="vote-bar-inner"><div class="vote-fill" id="voteNotFill"></div></div>
+        <div class="vote-count" id="voteNotCount">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vote Result -->
+  <div id="vote-result">
+    <div class="result-text" id="voteResultText"></div>
+  </div>
 
   <!-- YouTube IFrame API laden -->
   <script src="https://www.youtube.com/iframe_api"></script>
@@ -232,6 +355,67 @@
       if (data.type === 'queue_skip') return handleSkip();
       if (data.type === 'queue_clear') return handleClear();
       if (data.type === 'queue_stop') return handleStop();
+      if (data.type === 'vote_start') return handleVoteStart(data);
+      if (data.type === 'vote_update') return handleVoteUpdate(data);
+      if (data.type === 'vote_result') return handleVoteResult(data);
+      if (data.type === 'vote_reset') return handleVoteReset();
+    }
+
+    // =============================================
+    // Vote UI Handler
+    // =============================================
+    var voteBar = document.getElementById('vote-bar');
+    var voteResult = document.getElementById('vote-result');
+    var voteTimer = null;
+
+    function handleVoteStart(data) {
+      clearTimeout(voteTimer);
+      voteBar.style.display = 'block';
+      voteBar.style.animation = 'none';
+      void voteBar.offsetHeight;
+      voteBar.style.animation = 'voteSlideIn 0.4s ease-out';
+      voteResult.style.display = 'none';
+      document.getElementById('voteTitle').textContent = data.label + ' - Votet !Hot oder !Not';
+      document.getElementById('voteHotFill').style.width = '0%';
+      document.getElementById('voteNotFill').style.width = '0%';
+      document.getElementById('voteHotCount').textContent = '0';
+      document.getElementById('voteNotCount').textContent = '0';
+      dbg('Voting gestartet: ' + data.label);
+    }
+
+    function handleVoteUpdate(data) {
+      var hotPct = Math.min((data.hot / data.threshold) * 100, 100);
+      var notPct = Math.min((data.not / data.threshold) * 100, 100);
+      document.getElementById('voteHotFill').style.width = hotPct + '%';
+      document.getElementById('voteNotFill').style.width = notPct + '%';
+      document.getElementById('voteHotCount').textContent = data.hot + '/' + data.threshold;
+      document.getElementById('voteNotCount').textContent = data.not + '/' + data.threshold;
+    }
+
+    function handleVoteResult(data) {
+      voteBar.style.display = 'none';
+      voteResult.style.display = 'block';
+      voteResult.style.animation = 'none';
+      void voteResult.offsetHeight;
+      voteResult.style.animation = 'voteSlideIn 0.4s ease-out';
+      var el = document.getElementById('voteResultText');
+      if (data.result === 'hot') {
+        el.className = 'result-text result-hot';
+        el.textContent = 'HOT! Der Track bleibt! (' + data.hot + ' Stimmen)';
+      } else {
+        el.className = 'result-text result-not';
+        el.textContent = 'NOT! Der Track fliegt! (' + data.not + ' Stimmen)';
+      }
+      voteTimer = setTimeout(function() {
+        voteResult.style.animation = 'voteSlideOut 0.4s ease-in forwards';
+        setTimeout(function() { voteResult.style.display = 'none'; }, 400);
+      }, 4500);
+    }
+
+    function handleVoteReset() {
+      clearTimeout(voteTimer);
+      voteBar.style.animation = 'voteSlideOut 0.4s ease-in forwards';
+      setTimeout(function() { voteBar.style.display = 'none'; voteBar.style.animation = ''; }, 400);
     }
 
     // =============================================

@@ -212,6 +212,12 @@
     </div>
     <div class="card">
       <h3>Embed Links <span id="lC" style="font-weight:400;color:var(--dm);font-size:12px"></span></h3>
+      <div style="display:flex;gap:10px;margin-bottom:14px">
+        <button class="btn bs sm" onclick="exportLinks()">&#128230; Exportieren</button>
+        <button class="btn bp sm" onclick="document.getElementById('importFileInput').click()">&#128229; Importieren</button>
+        <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="importLinks(event)">
+        <span style="font-size:12px;color:var(--dm);align-self:center">Embed Links + Commands sichern / wiederherstellen</span>
+      </div>
       <div class="grid" id="lG"></div>
       <div class="empty" id="lE">Noch keine Embed Links.</div>
     </div>
@@ -300,6 +306,17 @@
           <div style="display:flex;align-items:center;gap:10px"><div class="tog" id="sQE" onclick="this.classList.toggle('on')"></div><span style="font-size:13px;color:var(--dm)">Viewer koennen aktuelle Queue abfragen</span></div>
         </div>
       </div>
+    </div>
+    <div class="card">
+      <h3>Hot or Not Voting <span class="sub">Viewer voten ueber das laufende Lied</span></h3>
+      <div class="sgrid">
+        <div class="si">
+          <label style="margin-bottom:8px">Voting aktivieren</label>
+          <div style="display:flex;align-items:center;gap:10px"><div class="tog" id="sVT" onclick="this.classList.toggle('on')"></div><span style="font-size:13px;color:var(--dm)">!Hot / !Not Voting bei YouTube Tracks</span></div>
+        </div>
+        <div class="si"><label>Voting Threshold (Stimmen)</label><input type="number" id="sVTh" min="1" max="50" value="5" style="max-width:120px"></div>
+      </div>
+      <p style="font-size:12px;color:var(--dm);margin-top:12px">Wenn aktiviert: Bei jedem YouTube Track fordert der Bot zum Voten auf. Erreicht eine Seite das Threshold, wird der Track behalten (!Hot) oder geloescht + geskippt (!Not). Jeder User hat 1 Stimme.</p>
       <div style="margin-top:20px"><button class="btn bp" onclick="saveSet()">Speichern</button></div>
     </div>
   </div>
@@ -676,10 +693,12 @@ function applySet(){
   const ov=document.getElementById('sOv');s.allow_overlap?ov.classList.add('on'):ov.classList.remove('on');
   const np=document.getElementById('sNP');s.chat_now_playing?np.classList.add('on'):np.classList.remove('on');
   const qe=document.getElementById('sQE');s.chat_queue_enabled?qe.classList.add('on'):qe.classList.remove('on');
+  const vt=document.getElementById('sVT');s.voting_enabled?vt.classList.add('on'):vt.classList.remove('on');
+  document.getElementById('sVTh').value=s.voting_threshold||5;
 }
 
 async function saveSet(){
-  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({command_prefix:document.getElementById('sPfx').value||'!',max_queue_size:parseInt(document.getElementById('sQ').value)||10,sound_volume:parseFloat(document.getElementById('sVS').value)||0.8,video_volume:parseFloat(document.getElementById('sVV').value)||0.5,video_duration_override_ms:parseInt(document.getElementById('sVD').value)||5000,allow_overlap:document.getElementById('sOv').classList.contains('on'),chat_now_playing:document.getElementById('sNP').classList.contains('on'),chat_queue_enabled:document.getElementById('sQE').classList.contains('on')})});toast('Gespeichert','ok');await loadCfg();}catch(e){toast('Fehler','err');}
+  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({command_prefix:document.getElementById('sPfx').value||'!',max_queue_size:parseInt(document.getElementById('sQ').value)||10,sound_volume:parseFloat(document.getElementById('sVS').value)||0.8,video_volume:parseFloat(document.getElementById('sVV').value)||0.5,video_duration_override_ms:parseInt(document.getElementById('sVD').value)||5000,allow_overlap:document.getElementById('sOv').classList.contains('on'),chat_now_playing:document.getElementById('sNP').classList.contains('on'),chat_queue_enabled:document.getElementById('sQE').classList.contains('on'),voting_enabled:document.getElementById('sVT').classList.contains('on'),voting_threshold:parseInt(document.getElementById('sVTh').value)||5})});toast('Gespeichert','ok');await loadCfg();}catch(e){toast('Fehler','err');}
 }
 
 function updateSelects(){
@@ -778,6 +797,35 @@ async function removeWhitelistArtist(name){
   var wl=(config.settings||{}).whitelist_artists||[];
   wl=wl.filter(function(a){return a!==name;});
   try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({whitelist_artists:wl})});toast(name+' entfernt','inf');await loadCfg();}catch(e){toast('Fehler','err');}
+}
+
+// ---- Export / Import Links ----
+async function exportLinks(){
+  try{
+    var r=await fetch(A+'/api/links/export');
+    var d=await r.json();
+    var blob=new Blob([JSON.stringify(d,null,2)],{type:'application/json'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download='twitchsoundboard-links-export.json';a.click();
+    URL.revokeObjectURL(url);
+    toast('Export heruntergeladen','ok');
+  }catch(e){toast('Export Fehler','err');}
+}
+
+async function importLinks(event){
+  var file=event.target.files[0];
+  if(!file)return;
+  if(!confirm('Embed Links importieren? Bestehende Links mit gleicher ID werden ueberschrieben.'))return;
+  try{
+    var text=await file.text();
+    var data=JSON.parse(text);
+    var r=await fetch(A+'/api/links/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    var d=await r.json();
+    if(r.ok){toast(d.imported+' Links importiert!','ok');await loadMedia();await loadCfg();}
+    else toast(d.error||'Fehler','err');
+  }catch(e){toast('Ungueltige Datei','err');}
+  event.target.value='';
 }
 </script>
 </body>
