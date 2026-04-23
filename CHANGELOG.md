@@ -1,4 +1,24 @@
 
+## [0.6.2] – 2026-04-24
+
+### Fixed
+- **Vote Overlay zeigt nichts** – vote.html war komplett transparent/leer wenn kein Vote aktiv. Jetzt: Gruener "Vote Overlay Ready" Indicator unten in der Mitte wenn verbunden. Verschwindet automatisch wenn ein Vote startet und kommt nach dem Vote zurueck.
+
+### Added
+- **Debug-Modus fuer Vote Overlay** – `/vote?debug` zeigt Debug-Informationen (WebSocket Status, Vote Events, Logs).
+
+## [0.6.1] – 2026-04-24
+
+### Added
+- **Eigenstaendige Vote Overlay (vote.html)** – Vote-Anzeige ist jetzt eine separate OBS-Browser-Quelle. Einfach eine zweite Browserquelle in OBS hinzufuegen mit der `/vote` URL.
+- **Animierte Vote-Balken** – Hot/Not Balken mit Glow-Effekt, Shimmer-Animation, Leading-Indikator und Count-Bump bei neuen Stimmen.
+- **Live Voting im Admin** – Queue-Tab zeigt jetzt Live-Vote-Status mit Trackname, Stimmenanzahl und Voter-Liste.
+- **Vote Overlay URL im OBS-Tab** – Neue URL-Box fuer das Vote-Overlay.
+- **Connection-Indicator auf dem Overlay** – Gruener/Roter Punkt oben links zeigt immer den WebSocket-Verbindungsstatus (nicht mehr nur im Debug-Modus).
+
+### Changed
+- Vote UI komplett aus overlay.html entfernt (jetzt in vote.html)
+
 ## [0.6.0] – 2026-04-24
 
 ### Added

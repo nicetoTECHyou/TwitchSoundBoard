@@ -1,5 +1,5 @@
 // =============================================
-// TwitchSoundBoard – Server v0.6.0
+// TwitchSoundBoard – Server v0.6.1
 // YouTube Embed (kein Download!)
 // =============================================
 
@@ -632,6 +632,27 @@ app.post('/api/twitch/stop', function(req, res) {
 });
 
 // =============================================
+// API – Vote Status (fuer Admin)
+// =============================================
+app.get('/api/vote', function(req, res) {
+  if (!activeVote) return res.json({ active: false });
+  var s = config.settings || {};
+  var threshold = s.voting_threshold || 5;
+  res.json({
+    active: true,
+    resolved: activeVote.resolved,
+    linkId: activeVote.linkId,
+    videoId: activeVote.videoId,
+    label: activeVote.label,
+    hot: Object.keys(activeVote.hot).length,
+    not: Object.keys(activeVote.not).length,
+    threshold: threshold,
+    hotVoters: Object.keys(activeVote.hot),
+    notVoters: Object.keys(activeVote.not)
+  });
+});
+
+// =============================================
 // API – Health
 // =============================================
 app.get('/api/health', function(req, res) {
@@ -674,6 +695,7 @@ app.post('/api/queue/stop', function(req, res) {
 // =============================================
 app.get('/admin', function(req, res) { res.sendFile(path.join(__dirname, 'public', 'admin.html')); });
 app.get('/overlay', function(req, res) { res.sendFile(path.join(__dirname, 'public', 'overlay.html')); });
+app.get('/vote', function(req, res) { res.sendFile(path.join(__dirname, 'public', 'vote.html')); });
 app.get('/', function(req, res) { res.redirect('/admin'); });
 
 // =============================================

@@ -276,6 +276,33 @@
       <div id="qEmpty" class="empty">Queue ist leer.</div>
       <ul class="clist" id="qList"></ul>
     </div>
+    <div class="card" id="voteCard">
+      <h3>Live Voting <span class="sub" id="voteStatus" style="color:var(--dm)">Inaktiv</span></h3>
+      <div id="voteInactive" class="empty">Keine Abstimmung aktiv.</div>
+      <div id="voteActive" style="display:none">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+          <span style="font-size:15px;font-weight:600;color:var(--tx)" id="voteTrack">-</span>
+          <span style="font-size:11px;padding:3px 10px;border-radius:4px;background:var(--ac);color:#fff;font-weight:600" id="voteBadge">LAEUFT</span>
+        </div>
+        <div style="display:flex;gap:16px;align-items:center;margin-bottom:14px">
+          <div style="flex:1;text-align:center;padding:14px;background:var(--sf2);border-radius:var(--r);border:1px solid var(--bd)">
+            <div style="font-size:12px;font-weight:700;color:var(--or);letter-spacing:1px;margin-bottom:6px">HOT</div>
+            <div style="font-size:28px;font-weight:800;color:var(--or)" id="voteHotNum">0</div>
+            <div style="font-size:11px;color:var(--dm)" id="voteHotTh">/ 5</div>
+          </div>
+          <div style="font-size:16px;font-weight:800;color:var(--dm)">VS</div>
+          <div style="flex:1;text-align:center;padding:14px;background:var(--sf2);border-radius:var(--r);border:1px solid var(--bd)">
+            <div style="font-size:12px;font-weight:700;color:var(--rd);letter-spacing:1px;margin-bottom:6px">NOT</div>
+            <div style="font-size:28px;font-weight:800;color:var(--rd)" id="voteNotNum">0</div>
+            <div style="font-size:11px;color:var(--dm)" id="voteNotTh">/ 5</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <div id="voteHotVoters" style="font-size:12px;color:var(--dm)"></div>
+          <div id="voteNotVoters" style="font-size:12px;color:var(--dm)"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ====== SETTINGS ====== -->
@@ -327,6 +354,7 @@
       <h3>OBS Browser-Quelle</h3>
       <p style="font-size:13px;color:var(--dm);margin-bottom:14px">Oeffne OBS, fuege eine Browserquelle hinzu, URL unten reinkopieren.</p>
       <div class="obs-box"><strong style="font-size:12px;color:var(--dm)">Overlay URL:</strong><code id="obsU">http://localhost:3000/overlay</code></div>
+      <div class="obs-box" style="margin-top:10px;border-color:var(--or)"><strong style="font-size:12px;color:var(--or)">Vote Overlay URL:</strong><code id="obsV">http://localhost:3000/vote</code></div>
       <div class="obs-box" style="margin-top:10px;border-color:var(--bd)"><strong style="font-size:12px;color:var(--dm)">Debug:</strong><code id="obsUD">http://localhost:3000/overlay?debug</code></div>
     </div>
     <div class="card">
@@ -712,6 +740,7 @@ async function loadSt(){
     document.getElementById('verBadge').textContent='v'+d.version;
     document.getElementById('obsU').textContent=`http://localhost:${location.port}/overlay`;
     document.getElementById('obsUD').textContent=`http://localhost:${location.port}/overlay?debug`;
+    document.getElementById('obsV').textContent=`http://localhost:${location.port}/vote`;
     document.getElementById('stGen').innerHTML=`
       <div class="sr"><span class="dot ${d.twitch.running?'on':''}"></span> Twitch Chat: ${d.twitch.running?'Verbunden (#'+d.twitch.channel+')':'Getrennt'}</div>
       <div class="sr"><span class="dot on"></span> Server: Online (${Math.round(d.uptime/60)}min)</div>
@@ -725,6 +754,42 @@ function toast(m,t='inf'){const c=document.getElementById('toasts'),e=document.c
 
 init();setInterval(()=>{loadSt();refreshTwitchStatus();},10000);
 setInterval(loadQueue,2000);
+setInterval(loadVote,1500);
+
+// ---- Vote Status (Live) ----
+async function loadVote(){
+  try{
+    var d=await(await fetch(A+'/api/vote')).json();
+    var inactive=document.getElementById('voteInactive');
+    var active=document.getElementById('voteActive');
+    var status=document.getElementById('voteStatus');
+    if(!d.active){
+      inactive.style.display='block';
+      active.style.display='none';
+      status.textContent='Inaktiv';
+      status.style.color='var(--dm)';
+      return;
+    }
+    inactive.style.display='none';
+    active.style.display='block';
+    if(d.resolved){
+      status.textContent='Entschieden';
+      status.style.color='var(--or)';
+    }else{
+      status.textContent='Aktiv';
+      status.style.color='var(--gn)';
+    }
+    document.getElementById('voteTrack').textContent=d.label||'-';
+    document.getElementById('voteHotNum').textContent=d.hot;
+    document.getElementById('voteNotNum').textContent=d.not;
+    document.getElementById('voteHotTh').textContent='/ '+d.threshold;
+    document.getElementById('voteNotTh').textContent='/ '+d.threshold;
+    var hv=document.getElementById('voteHotVoters');
+    var nv=document.getElementById('voteNotVoters');
+    hv.innerHTML=d.hotVoters&&d.hotVoters.length?'Hot: '+d.hotVoters.map(function(v){return esc(v);}).join(', '):'';
+    nv.innerHTML=d.notVoters&&d.notVoters.length?'Not: '+d.notVoters.map(function(v){return esc(v);}).join(', '):'';
+  }catch(e){}
+}
 
 // ---- Queue Management ----
 async function loadQueue(){
