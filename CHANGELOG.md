@@ -1,16 +1,4 @@
 
-## [0.7.0] – 2026-04-24
-
-### Added
-- **Schnell-Szenen (Quick Scenes)** – Benannte Presets die per Chat-Command oder per Klick im Admin aktiviert werden. Jede Szene zeigt einen Overlay-Text und optional einen farbigen Hintergrund/Gradient auf dem OBS-Overlay.
-- **!scene Chat-Command** – Viewer und Mods koennen mit `!scene <Name>` die aktive Schnell-Szene wechseln. Case-insensitive Suche, Bot bestaetigt im Chat.
-- **Szenen CRUD im Admin** – Neuer "Szenen"-Tab: Szenen erstellen, bearbeiten (Name, Text, Hintergrundfarbe, Auto-Fade), loeschen. Per Klick aktivieren/deaktivieren.
-- **Auto-Fade** – Szenen koennen eine Dauer in ms haben (z.B. 10000 = 10 Sekunden). Nach Ablauf verschwindet die Szene automatisch vom Overlay.
-- **Szene-Overlay auf dem OBS** – Aktive Szene zeigt Text unten in der Mitte mit Blur-Effekt und Scene-Namen-Tag oben rechts. Hintergrundfarbe/Gradient als Vollflaeche hinter dem Overlay.
-
-### Changed
-- Neuer "Szenen"-Tab zwischen Queue und Einstellungen.
-
 ## [0.6.2] – 2026-04-24
 
 ### Fixed
