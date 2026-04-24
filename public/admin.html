@@ -255,6 +255,19 @@
       <div id="wlList" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:4px"></div>
       <div class="empty" id="wlEmpty">Keine Artists freigegeben (alle erlaubt). Fuege Artists hinzu um zu filtern.</div>
     </div>
+    <div class="card" style="border-color:var(--rd)">
+      <h3 style="color:var(--rd)">Gesperrte Artists / Blacklist <span class="sub">Twitch-Richtlinien: Diese Songs werden NICHT abgespielt</span></h3>
+      <p style="font-size:12px;color:var(--dm);margin-bottom:14px">Songs deren Artist, Titel oder Kombination einen der unten stehenden Begriffe <strong>enthalten</strong> werden automatisch blockiert. Applies zu Chat-Links (!ytlink). Admin-Importe sind nicht betroffen. Die Blacklist hat hoechste Prioritaet und uebersteuert die Whitelist.</p>
+      <div class="fr">
+        <div class="fg">
+          <label>Artist / Begriff hinzufuegen</label>
+          <input type="text" id="blArtist" placeholder="z.B. Drake, RIAA, Sony Music" onkeydown="if(event.key==='Enter')addBlacklistArtist()">
+        </div>
+        <div><button class="btn br" onclick="addBlacklistArtist()">Hinzufuegen</button></div>
+      </div>
+      <div id="blList" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:4px"></div>
+      <div class="empty" id="blEmpty">Keine Eintraege. Fuege Artists oder Begriffe hinzu die auf Twitch nicht gespielt werden duerfen.</div>
+    </div>
     <div class="card">
       <h3>Warteschlange <span id="qCount" style="font-weight:400;color:var(--dm);font-size:12px"></span></h3>
       <p style="font-size:12px;color:var(--dm);margin-bottom:14px">Live-Anzeige der aktuellen Overlay-Queue. Aktualisiert automatisch alle 2 Sekunden.</p>
@@ -690,6 +703,7 @@ function renderCmds(){
     return '<li class="citem"><span class="cn">'+esc(k)+'</span><span class="cf">'+desc+'</span><span class="ct">'+t+'</span><button class="btn bd sm bi" onclick="delCmd(\''+esc(k)+'\')" title="Loeschen">&#10005;</button></li>';
   }).join('');
   renderWhitelist();
+  renderBlacklist();
 }
 
 async function addCmd(){
@@ -862,6 +876,34 @@ async function removeWhitelistArtist(name){
   var wl=(config.settings||{}).whitelist_artists||[];
   wl=wl.filter(function(a){return a!==name;});
   try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({whitelist_artists:wl})});toast(name+' entfernt','inf');await loadCfg();}catch(e){toast('Fehler','err');}
+}
+
+// ---- Blacklist ----
+function renderBlacklist(){
+  var bl=(config.settings||{}).blacklist_artists||[];
+  var list=document.getElementById('blList');
+  var empty=document.getElementById('blEmpty');
+  if(bl.length===0){list.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  list.innerHTML=bl.map(function(a){
+    var safe=esc(a).replace(/'/g,'\u2019');
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:var(--sf2);border:1px solid var(--rd);border-radius:var(--r);padding:6px 12px;font-size:13px;color:var(--rd)">'+esc(a)+'<button class="btn bd sm bi" onclick="removeBlacklistArtist(\''+safe+'\')" title="Entfernen">&#10005;</button></span>';
+  }).join('');
+}
+
+async function addBlacklistArtist(){
+  var name=document.getElementById('blArtist').value.trim();
+  if(!name)return toast('Begriff eingeben!','err');
+  var bl=(config.settings||{}).blacklist_artists||[];
+  if(bl.some(function(a){return a.toLowerCase()===name.toLowerCase();}))return toast('Bereits auf der Blacklist','inf');
+  bl.push(name);
+  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({blacklist_artists:bl})});document.getElementById('blArtist').value='';toast(name+' auf Blacklist gesetzt','ok');await loadCfg();}catch(e){toast('Fehler','err');}
+}
+
+async function removeBlacklistArtist(name){
+  var bl=(config.settings||{}).blacklist_artists||[];
+  bl=bl.filter(function(a){return a!==name;});
+  try{await fetch(A+'/api/config/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({blacklist_artists:bl})});toast(name+' von Blacklist entfernt','inf');await loadCfg();}catch(e){toast('Fehler','err');}
 }
 
 // ---- Export / Import Links ----

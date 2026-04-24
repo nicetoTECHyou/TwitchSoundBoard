@@ -1,4 +1,12 @@
 
+## [0.6.3] – 2026-04-24
+
+### Added
+- **Artist Blacklist fuer Twitch-Richtlinien** – Neue Blacklist im Queue-Tab. Artists oder Begriffe eintragen die auf Twitch nicht gespielt werden duerfen (z.B. wegen Copyright/DMCA). Pruefung erfolgt auf Artist, Titel und Kombination (Substring-Match).
+- **Blacklist > Whitelist Prioritaet** – Die Blacklist hat hoechste Prioritaet und blockiert Songs selbst wenn sie auf der Whitelist stehen.
+- **Automatische Chat-Benachrichtigung** – Wenn ein Song durch die Blacklist blockiert wird, schreibt der Bot: "@user Dieser Song darf wegen Twitch-Richtlinien nicht gespielt werden."
+- **Admin-Import不受Blacklist** – YouTube-Importe ueber das Admin-Panel sind von der Blacklist ausgenommen (nur Chat-Links !ytlink werden geprueft).
+
 ## [0.6.2] – 2026-04-24
 
 ### Fixed

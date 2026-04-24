@@ -99,14 +99,39 @@ function getYtTitle(videoId) {
   });
 }
 
+// ---- Blacklist Pruefung ----
+function isBlacklisted(title, artist) {
+  var bl = (config.settings || {}).blacklist_artists || [];
+  if (bl.length === 0) return null;
+  var titleLower = (title || '').toLowerCase();
+  var artistLower = (artist || '').toLowerCase();
+  var combined = (artist ? artist + ' - ' + title : title).toLowerCase();
+  for (var i = 0; i < bl.length; i++) {
+    var entry = bl[i].trim().toLowerCase();
+    if (!entry) continue;
+    if (artistLower.indexOf(entry) !== -1) return { match: bl[i].trim, field: 'artist' };
+    if (titleLower.indexOf(entry) !== -1) return { match: bl[i].trim, field: 'title' };
+    if (combined.indexOf(entry) !== -1) return { match: bl[i].trim, field: 'combined' };
+  }
+  return null;
+}
+
 // YouTube Embed Import (Video als Embed, kein Download!)
-async function importYouTubeEmbed(url) {
+async function importYouTubeEmbed(url, skipBlacklist) {
   var videoId = extractYtVideoId(url);
   if (!videoId) throw new Error('Ungueltige YouTube URL');
 
   // Titel holen
   var title = 'YouTube Video';
   try { title = await getYtTitle(videoId); } catch (e) { log('WARN', 'YT Titel konnte nicht geholt werden: ' + e.message); }
+
+  // Blacklist Pruefung (bei Chat-Links)
+  if (!skipBlacklist) {
+    var blocked = isBlacklisted(title, '');
+    if (blocked) {
+      throw new Error('BLACKLIST: "' + title + '" - blockiert durch Blacklist-Eintrag: ' + blocked.match);
+    }
+  }
 
   var linkId = 'yt_' + videoId;
 
@@ -334,7 +359,7 @@ app.post('/api/import', function(req, res) {
   if (!url) return res.status(400).json({ error: 'URL noetig' });
 
   if (isYtUrl(url)) {
-    importYouTubeEmbed(url).then(function(result) {
+    importYouTubeEmbed(url, true).then(function(result) {
       broadcast({ type: 'config_reloaded', config: config });
       res.json({ ok: true, 'import': result });
     }).catch(function(err) {
@@ -503,25 +528,39 @@ async function handleChatLink(url, user) {
       var link = config.links[linkId];
       result = { link_id: linkId, title: link.title, video_id: link.video_id, artist: link.artist || '' };
     } else {
-      result = await importYouTubeEmbed(url);
+      result = await importYouTubeEmbed(url, false);
       result.artist = '';
+    }
+
+    var artist = (result.artist || '').trim();
+    var title = result.title || '';
+
+    // Blacklist Pruefung (zuerst! Blacklist > Whitelist)
+    var blocked = isBlacklisted(title, artist);
+    if (blocked) {
+      log('INFO', 'Chat !ytlink: BLACKLIST "' + title + '" (Eintrag: ' + blocked.match + ', Feld: ' + blocked.field + ') von ' + user);
+      try {
+        var creds = loadCredentials();
+        if (chatClient && creds.twitch_channel) {
+          chatClient.say('#' + creds.twitch_channel, '@' + user + ' Dieser Song darf wegen Twitch-Richtlinien nicht gespielt werden.');
+        }
+      } catch (e) {}
+      return;
     }
 
     // Artist Whitelist Pruefung
     var whitelist = (config.settings || {}).whitelist_artists || [];
-    var artist = (result.artist || '').trim();
     if (whitelist.length > 0) {
       var isWhitelisted = artist && whitelist.some(function(a) { return a.trim().toLowerCase() === artist.toLowerCase(); });
       if (!isWhitelisted) {
         log('INFO', 'Chat !ytlink: Blockiert' + (artist ? ' (Artist "' + artist + '" nicht freigegeben)' : ' (kein Artist gesetzt)') + ' von ' + user);
-        // Chat-Nachricht senden
         try {
-          var creds = loadCredentials();
-          if (chatClient && creds.twitch_channel) {
+          var creds2 = loadCredentials();
+          if (chatClient && creds2.twitch_channel) {
             if (!artist) {
-              chatClient.say('#' + creds.twitch_channel, '@' + user + ' Song wurde importiert aber kein Artist eingetragen. Ein Admin muss den Artist eintragen und freigeben.');
+              chatClient.say('#' + creds2.twitch_channel, '@' + user + ' Song wurde importiert aber kein Artist eingetragen. Ein Admin muss den Artist eintragen und freigeben.');
             } else {
-              chatClient.say('#' + creds.twitch_channel, '@' + user + ' Der Artist "' + artist + '" ist nicht freigegeben.');
+              chatClient.say('#' + creds2.twitch_channel, '@' + user + ' Der Artist "' + artist + '" ist nicht freigegeben.');
             }
           }
         } catch (e) {}
@@ -532,6 +571,17 @@ async function handleChatLink(url, user) {
     triggerOverlay(result.link_id, 'link', 'chat', user);
     log('INFO', 'Chat !ytlink: "' + result.title + '" von ' + user);
   } catch (e) {
+    // Blacklist-Fehler beim Import
+    if (e.message && e.message.indexOf('BLACKLIST:') === 0) {
+      log('INFO', 'Chat !ytlink: BLACKLIST Import-Block von ' + user + ': ' + e.message);
+      try {
+        var creds3 = loadCredentials();
+        if (chatClient && creds3.twitch_channel) {
+          chatClient.say('#' + creds3.twitch_channel, '@' + user + ' Dieser Song darf wegen Twitch-Richtlinien nicht gespielt werden.');
+        }
+      } catch (e2) {}
+      return;
+    }
     log('ERROR', 'Chat Link Fehler von ' + user + ': ' + e.message);
   }
 }
